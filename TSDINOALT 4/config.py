@@ -86,71 +86,71 @@ config = {
     "dwt_band_scale_approx_range":  (0.9,  1.1),
     "dwt_band_scale_detail_range":  (0.6,  1.4),
 
+    # ── Non-DWT transform defaults ────────────────────────────────────────────
+    # These are global fallbacks; override per-crop with the same key in the spec.
+    "lorentz_v_range":              (0.2,  0.6),   # relativistic velocity fraction
+    "polar_warp_range":             (0.7,  1.3),
+    "galilien_a_range":             (0.8,  1.2),
+    "rotation_angle_range":         (0.0,  0.3927),  # 0 – π/8 radians
+    "boost_b_range":                (0.01, 0.3),
+    "hyperbolic_warp_range":        (0.5,  1.5),
+    "hyperbolic_shift_magnitude":   0.3,
+
     # ── Augmentation views ────────────────────────────────────────────────────
     #
     # global_crops → seen by BOTH student and teacher (teacher only processes these).
     #                Keep crop_ratio = 1.0 for stable teacher targets.
     #
     # local_crops  → seen by the student only.
+    #                Use crop_ratio < 1.0 to give the student shorter sub-windows
+    #                (analogous to small crops in image DINO).
     #
     # Each entry is a dict:
     #   "type"       str | list[str]  – if list, one is drawn at random per sample
     #   "crop_ratio" float            – fraction of seq_len to keep (1.0 = no crop)
-    #   Per-crop overrides of any dwt_* key above are also accepted.
+    #   Per-crop param overrides are also accepted (e.g. "v_range", "zero_out_ratio").
     #
-    # ── Available DWT aug types ───────────────────────────────────────────────
+    # ── Available aug types ───────────────────────────────────────────────────
     #
-    #  "dwt_soft_threshold"  — DWT → soft-threshold all detail coefficients → IDWT.
-    #      Removes small-magnitude high-freq components; keeps dominant structure.
-    #      Threshold per level = soft_threshold_sigma * max(|coeffs at that level|).
-    #      → best for teacher (global views): produces clean, consistent targets.
-    #      Override:  soft_threshold_sigma  (default from dwt_soft_threshold_sigma above)
-    #      Example:   {"type": "dwt_soft_threshold", "crop_ratio": 1.0, "soft_threshold_sigma": 0.3}
+    #  DWT types (prefix "dwt_"):
+    #   "dwt_soft_threshold"  — soft-threshold detail coeffs; clean global view.
+    #   "dwt_zero_out_detail" — randomly zero finest-level detail coeffs.
+    #   "dwt_high_perturb"    — Gaussian noise on all detail coeffs.
+    #   "dwt_low_pass"        — zero all detail coeffs (maximally smooth).
+    #   "dwt_band_scale"      — randomly scale each frequency band.
     #
-    #  "dwt_zero_out_detail" — DWT → randomly zero out zero_out_ratio of coefficients
-    #      in the finest `finest_levels` detail arrays → IDWT.
-    #      Drops stochastic fine-scale features; forces invariance to high-freq detail.
-    #      → good student local view (type a).
-    #      Overrides: zero_out_ratio, finest_levels
-    #      Example:   {"type": "dwt_zero_out_detail", "crop_ratio": 1.0, "zero_out_ratio": 0.3, "finest_levels": 1}
-    #
-    #  "dwt_high_perturb"    — DWT → add Gaussian noise to ALL detail coefficients → IDWT.
-    #      Corrupts detail at all scales while preserving approximation.
-    #      → good student local view (type b).
-    #      Override:  high_perturb_noise_range
-    #      Example:   {"type": "dwt_high_perturb", "crop_ratio": 1.0}
-    #
-    #  "dwt_low_pass"        — DWT → zero all detail coefficients → IDWT (maximally smooth).
-    #      Example:   {"type": "dwt_low_pass", "crop_ratio": 1.0}
-    #
-    #  "dwt_band_scale"      — DWT → randomly scale each frequency band → IDWT.
-    #      Example:   {"type": "dwt_band_scale", "crop_ratio": 1.0}
+    #  Non-DWT types:
+    #   "lorentz"          — relativistic Lorentz boost: γ(x − v·t).
+    #                        Override: v_range
+    #   "polar"            — polar-coordinate warp.       Override: warp_range
+    #   "galilien"         — Galilean scaling (x · a).    Override: a_range
+    #   "rotation"         — 2-D rotation with time axis. Override: angle_range
+    #   "boost"            — additive linear time trend.  Override: b_range
+    #   "hyperbolic_warp"  — tanh amplitude warp.         Override: warp_range
+    #   "hyperbolic_geom"  — Poincaré-disk Möbius shift.  Override: shift_magnitude
     #
     # ─────────────────────────────────────────────────────────────────────────
 
     # 2 global views — teacher sees only these.
-    # Both use soft thresholding with different strengths so the teacher
-    # produces targets from slightly different levels of denoising.
+    # Keep crop_ratio = 1.0 so teacher targets are stable full-length sequences.
     "global_crops": [
         {"type": "dwt_soft_threshold", "crop_ratio": 1.0, "soft_threshold_sigma": 0.2},
         {"type": "dwt_soft_threshold", "crop_ratio": 1.0, "soft_threshold_sigma": 0.4},
     ],
 
     # 8 local views — student sees these + the 2 global views above.
-    # Each randomly applies either (a) zero-out-detail or (b) noise-on-detail,
-    # with mild variation in the key hyperparameter across views so the student
-    # sees a spectrum of perturbation strengths.
+    # crop_ratio = 0.5 → student sees half-length sub-windows (harder task).
     "local_crops": [
         # ── type (a): stochastic zeroing of finest-level detail coefficients ──
-        {"type": "dwt_zero_out_detail", "crop_ratio": 1.0, "zero_out_ratio": 0.2, "finest_levels": 1},
-        {"type": "dwt_zero_out_detail", "crop_ratio": 1.0, "zero_out_ratio": 0.3, "finest_levels": 1},
-        {"type": "dwt_zero_out_detail", "crop_ratio": 1.0, "zero_out_ratio": 0.4, "finest_levels": 1},
-        {"type": "dwt_zero_out_detail", "crop_ratio": 1.0, "zero_out_ratio": 0.5, "finest_levels": 2},
+        {"type": "dwt_zero_out_detail", "crop_ratio": 0.5, "zero_out_ratio": 0.2, "finest_levels": 1},
+        {"type": "dwt_zero_out_detail", "crop_ratio": 0.5, "zero_out_ratio": 0.3, "finest_levels": 1},
+        {"type": "dwt_zero_out_detail", "crop_ratio": 0.5, "zero_out_ratio": 0.4, "finest_levels": 1},
+        {"type": "dwt_zero_out_detail", "crop_ratio": 0.5, "zero_out_ratio": 0.5, "finest_levels": 2},
         # ── type (b): Gaussian noise on all detail coefficients ──────────────
-        {"type": "dwt_high_perturb",    "crop_ratio": 1.0, "high_perturb_noise_range": (0.02, 0.05)},
-        {"type": "dwt_high_perturb",    "crop_ratio": 1.0, "high_perturb_noise_range": (0.03, 0.08)},
-        {"type": "dwt_high_perturb",    "crop_ratio": 1.0, "high_perturb_noise_range": (0.05, 0.12)},
-        {"type": "dwt_high_perturb",    "crop_ratio": 1.0, "high_perturb_noise_range": (0.08, 0.15)},
+        {"type": "dwt_high_perturb",    "crop_ratio": 0.5, "high_perturb_noise_range": (0.02, 0.05)},
+        {"type": "dwt_high_perturb",    "crop_ratio": 0.5, "high_perturb_noise_range": (0.03, 0.08)},
+        {"type": "dwt_high_perturb",    "crop_ratio": 0.5, "high_perturb_noise_range": (0.05, 0.12)},
+        {"type": "dwt_high_perturb",    "crop_ratio": 0.5, "high_perturb_noise_range": (0.08, 0.15)},
     ],
 
     # ── Downstream: Forecasting ───────────────────────────────────────────────

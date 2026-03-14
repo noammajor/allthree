@@ -302,17 +302,6 @@ def train_TS_DINO(args):
         len(data_loader),
     )
 #----------------Train Loop --------------------
-    #to_restore = {"epoch": 0}
-   #utils.restart_from_checkpoint(
-    #    os.path.join(args.output_dir, "checkpoint.pth"),
-    #    run_variables=to_restore,
-    #    student=student,
-     #   teacher=teacher,
-      #  optimizer=optimizer,
-       # fp16_scaler=fp16_scaler,
-      #  dino_loss=dino_loss,
-    #)
-    #start_epoch = to_restore["epoch"]
     start_epoch = 0
 
     start_time = time.time()
@@ -484,24 +473,58 @@ class DataAugmentationDino:
         # Pre-build one DWTAugmentation per (crop_index, aug_type) pair
         self._transforms = self._build_transforms(global_crops + local_crops, dwt_cfg)
 
+    # Registry of non-DWT transform names → classes in data_agumentation.py
+    _NON_DWT_REGISTRY = {
+        'polar':            aug.polar_transformation,
+        'galilien':         aug.galilien_transformation,
+        'rotation':         aug.rotation_transformation,
+        'boost':            aug.boost_transformation,
+        'lorentz':          aug.lorentz_transformation,
+        'hyperbolic_warp':  aug.hyperbolic_amplitude_warp,
+        'hyperbolic_geom':  aug.HyperBolicGeometry,
+    }
+
     def _build_transforms(self, all_specs, dwt_cfg):
         transforms = []
         for spec in all_specs:
             types = spec['type'] if isinstance(spec['type'], list) else [spec['type']]
             per_type = {}
             for t in types:
-                mode = t[4:]   # strip leading 'dwt_'
-                per_type[t] = aug.DWTAugmentation(
-                    wavelet                  = spec.get('wavelet',                    dwt_cfg['dwt_wavelet']),
-                    level                    = spec.get('level',                      dwt_cfg['dwt_level']),
-                    mode                     = mode,
-                    soft_threshold_sigma     = spec.get('soft_threshold_sigma',       dwt_cfg.get('dwt_soft_threshold_sigma', 0.3)),
-                    zero_out_ratio           = spec.get('zero_out_ratio',             dwt_cfg.get('dwt_zero_out_ratio', 0.3)),
-                    finest_levels            = spec.get('finest_levels',              dwt_cfg.get('dwt_finest_levels', 1)),
-                    high_perturb_noise_range = spec.get('high_perturb_noise_range',   dwt_cfg.get('dwt_high_perturb_noise_range', (0.03, 0.08))),
-                    band_scale_approx_range  = dwt_cfg.get('dwt_band_scale_approx_range', (0.9, 1.1)),
-                    band_scale_detail_range  = dwt_cfg.get('dwt_band_scale_detail_range', (0.6, 1.4)),
-                )
+                if t.startswith('dwt_'):
+                    mode = t[4:]   # strip leading 'dwt_'
+                    per_type[t] = aug.DWTAugmentation(
+                        wavelet                  = spec.get('wavelet',                    dwt_cfg['dwt_wavelet']),
+                        level                    = spec.get('level',                      dwt_cfg['dwt_level']),
+                        mode                     = mode,
+                        soft_threshold_sigma     = spec.get('soft_threshold_sigma',       dwt_cfg.get('dwt_soft_threshold_sigma', 0.3)),
+                        zero_out_ratio           = spec.get('zero_out_ratio',             dwt_cfg.get('dwt_zero_out_ratio', 0.3)),
+                        finest_levels            = spec.get('finest_levels',              dwt_cfg.get('dwt_finest_levels', 1)),
+                        high_perturb_noise_range = spec.get('high_perturb_noise_range',   dwt_cfg.get('dwt_high_perturb_noise_range', (0.03, 0.08))),
+                        band_scale_approx_range  = dwt_cfg.get('dwt_band_scale_approx_range', (0.9, 1.1)),
+                        band_scale_detail_range  = dwt_cfg.get('dwt_band_scale_detail_range', (0.6, 1.4)),
+                    )
+                elif t in self._NON_DWT_REGISTRY:
+                    cls = self._NON_DWT_REGISTRY[t]
+                    # Each class reads its params from the spec first, then falls back to cfg defaults
+                    kwargs = {}
+                    if t == 'lorentz':
+                        kwargs['v_range']        = spec.get('v_range',        dwt_cfg.get('lorentz_v_range',        (0.2, 0.6)))
+                    elif t == 'polar':
+                        kwargs['warp_range']     = spec.get('warp_range',     dwt_cfg.get('polar_warp_range',       (0.7, 1.3)))
+                    elif t == 'galilien':
+                        kwargs['a_range']        = spec.get('a_range',        dwt_cfg.get('galilien_a_range',       (0.8, 1.2)))
+                    elif t == 'rotation':
+                        kwargs['angle_range']    = spec.get('angle_range',    dwt_cfg.get('rotation_angle_range',   (0, 0.3927)))
+                    elif t == 'boost':
+                        kwargs['b_range']        = spec.get('b_range',        dwt_cfg.get('boost_b_range',          (0.01, 0.3)))
+                    elif t == 'hyperbolic_warp':
+                        kwargs['warp_range']     = spec.get('warp_range',     dwt_cfg.get('hyperbolic_warp_range',  (0.5, 1.5)))
+                    elif t == 'hyperbolic_geom':
+                        kwargs['shift_magnitude']= spec.get('shift_magnitude',dwt_cfg.get('hyperbolic_shift_magnitude', 0.3))
+                    per_type[t] = cls(**kwargs)
+                else:
+                    raise ValueError(f"Unknown augmentation type '{t}'. DWT types must start with 'dwt_'. "
+                                     f"Non-DWT types: {list(self._NON_DWT_REGISTRY)}")
             transforms.append(per_type)
         return transforms
 
