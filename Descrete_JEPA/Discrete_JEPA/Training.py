@@ -69,19 +69,20 @@ def compute_discrete_jepa_loss(
     usage_pct = active_codes.float() / self.vector_quantizer._num_embeddings * 100
     var_loss_context_patch, cov_loss_context_patch = self._calculate_vicreg_loss(z_p_context)
     var_loss_context_token, cov_loss_context_token = context_out["var_loss"], context_out["covar_loss"]
-    token_div_loss = self._calculate_token_diversity_loss(z_s_context)
-    cross_decorr_loss = self._cross_decorrelation_loss(z_p_context, z_s_context)
-    grounding_loss = self._grounding_loss(pred_p2p, patches, non_masks) if patches is not None else torch.tensor(0.0, device=z_p_context.device)
+    #token_div_loss = self._calculate_token_diversity_loss(z_s_context)
+    #cross_decorr_loss = self._cross_decorrelation_loss(z_p_context, z_s_context)
+    #grounding_loss = self._grounding_loss(pred_p2p, patches, non_masks) if patches is not None else torch.tensor(0.0, device=z_p_context.device)
     total_loss = (
         1.0*(lambda_weights["S2P"] * l_s2p +
         lambda_weights["P2P"] * l_p2p +
         lambda_weights["P2S"] * l_p2s )+
         beta_vq * l_vq +
-        self.config["preplexity_coeff"] * l_preplexity +
-        self.config["token_diversity"] * token_div_loss +
-        self.config["vigreg_coeff"] * (var_loss_context_token+var_loss_context_patch+cov_loss_context_patch+cov_loss_context_token) +
-        self.config["decorr_coeff"] * cross_decorr_loss +
-        self.config["grounding_coeff"] * grounding_loss
+        #self.config["preplexity_coeff"] * l_preplexity +
+        #self.config["token_diversity"] * token_div_loss +
+        self.config["vigreg_var"] * (var_loss_context_token+var_loss_context_patch) +
+        self.config["vigreg_covar"] * (cov_loss_context_patch+cov_loss_context_token) +
+        #self.config["decorr_coeff"] * cross_decorr_loss +
+        #self.config["grounding_coeff"] * grounding_loss
     )
     if batch_idx % 5 == 0:
         print(f"TOTAL: {total_loss.item():.4f} | P2P: {l_p2p.item():.4f}, S2P: {l_s2p.item():.4f}, P2S: {l_p2s.item():.4f}, VQ: {l_vq.item():.4f}, Perp: {l_preplexity:.4f}, TokDiv: {token_div_loss.item():.4f}, XDecorr: {cross_decorr_loss.item():.4f}, Grnd: {grounding_loss.item():.4f}")
