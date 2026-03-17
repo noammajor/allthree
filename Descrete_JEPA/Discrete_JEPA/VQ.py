@@ -47,8 +47,14 @@ class VectorQuantizer(nn.Module):
 
         # Soft assignments: differentiable via distances (has gradient to both
         # encoder outputs and codebook weights)
-        soft_avg_probs = F.softmax(-distances, dim=-1).mean(dim=0)
+        # soft_token_probs: per-token distribution over codebook [N, codebook_size]
+        # soft_avg_probs:   batch-averaged distribution           [codebook_size]
+        #soft_token_probs = F.softmax(-distances, dim=-1)
+        #soft_avg_probs   = soft_token_probs.mean(dim=0)
 
+        #return loss, quantized, perplexity, encoding_indices, encodings, soft_avg_probs, soft_token_probs
         return loss, quantized, perplexity, encoding_indices, encodings, soft_avg_probs
+
+
 
 

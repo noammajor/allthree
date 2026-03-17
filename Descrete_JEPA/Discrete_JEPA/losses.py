@@ -64,6 +64,40 @@ def _grounding_loss(self, pred_p2p: torch.Tensor, patches: torch.Tensor, non_mas
 
     return torch.nn.functional.mse_loss(pred_raw, target_raw.detach())
 
+def _vq_kl_loss_batch(self, teacher_soft_probs: torch.Tensor, student_soft_probs: torch.Tensor) -> torch.Tensor:
+    """Batch-level KL divergence between teacher and student codebook usage distributions.
+
+    teacher_soft_probs: [codebook_size] — soft_avg_probs from teacher VQ (averaged over all tokens)
+    student_soft_probs: [codebook_size] — soft_avg_probs from student VQ
+
+    Minimizes KL(teacher || student): forces the student's overall codebook usage pattern
+    to match the teacher's. Coarser than per-token but zero overhead — uses the
+    soft_avg_probs already returned by VectorQuantizer.forward().
+    """
+    eps = 1e-8
+    p = teacher_soft_probs.clamp(min=eps).detach()  # teacher = target, no grad
+    q = student_soft_probs.clamp(min=eps)
+    return F.kl_div(q.log(), p, reduction='sum')
+
+
+def _vq_kl_loss_per_token(self, teacher_token_probs: torch.Tensor, student_token_probs: torch.Tensor) -> torch.Tensor:
+    """Per-token KL divergence between teacher and student soft codebook assignments.
+
+    teacher_token_probs: [N, codebook_size] — soft_token_probs from teacher VQ (before mean)
+    student_token_probs: [N, codebook_size] — soft_token_probs from student VQ (before mean)
+    N = B * L (flattened batch × sequence length)
+
+    DINO-style alignment at the token level: each individual token is pushed to quantize
+    to the same codebook entry as the teacher's version of that token.
+    Teacher probs are detached — gradients flow only through the student.
+    Requires VectorQuantizer to return soft_token_probs (see VQ.py).
+    """
+    eps = 1e-8
+    p = teacher_token_probs.clamp(min=eps).detach()  # teacher = target, no grad
+    q = student_token_probs.clamp(min=eps)
+    return F.kl_div(q.log(), p, reduction='batchmean')
+
+
 def _cross_decorrelation_loss(self, z_patches: torch.Tensor, z_tokens: torch.Tensor) -> torch.Tensor:
     """Cross-modal decorrelation: penalizes every patch for being similar to every token.
 
