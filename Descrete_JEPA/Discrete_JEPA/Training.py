@@ -48,12 +48,12 @@ def compute_discrete_jepa_loss(
     z_p_target = target_out["data_patches"]
     z_s_context = context_out["quantized_semantic"]
     z_p_context = context_out["data_patches"]
-
+# fix z_s
     # Apply VQ consistently (removed conditional epoch logic)
     # Context: Student VQ learns from student encoder (gradients flow to codebook)
     l_vq, z_s_context, perplexity, indices, encodings_context, soft_avg_probs = self.vector_quantizer(z_s_context)
     # Target: EMA VQ (teacher codebook, updated via momentum) on detached EMA encoder output
-    _, z_s_target, _, _, _, _ = self.vector_quantizer_ema(z_s_target.detach())
+    _, z_s_target, _, _, _, _ = self.vector_quantizer(z_s_target.detach())
 
     pred_s2p = self.predictor(z_s_context, target_mask=non_masks, task='S2P')
     l_s2p = F.mse_loss(pred_s2p, z_p_target.detach())
@@ -151,8 +151,6 @@ def save_model(self, encoder, target_encoder, predictor, optimizer, epoch, path_
         "target_encoder": target_encoder.state_dict(),
         "predictor": predictor.state_dict(),
         "vector_quantizer": self.vector_quantizer.state_dict(),
-        "vector_quantizer_ema": self.vector_quantizer_ema.state_dict(),
-        "optimizer": optimizer.state_dict(),
     }
 
     try:
@@ -169,11 +167,8 @@ def train_and_evaluate(self):
     self.predictor = self.predictor.to(self.device)
     self.encoder_ema = self.encoder_ema.to(self.device)
     self.vector_quantizer = self.vector_quantizer.to(self.device)
-    self.vector_quantizer_ema = self.vector_quantizer_ema.to(self.device)
     self.grounding_head = self.grounding_head.to(self.device)
     for p in self.encoder_ema.parameters():
-        p.requires_grad = False
-    for p in self.vector_quantizer_ema.parameters():
         p.requires_grad = False
 
     num_batches = self.steps_per_epoch
@@ -236,11 +231,7 @@ def train_and_evaluate(self):
             with torch.no_grad():
                 for p, p_ema in zip(self.encoder.parameters(), self.encoder_ema.parameters()):
                     p_ema.data.mul_(m).add_((1.0 - m) * p.detach().data)
-                # Dedicated EMA for codebook using vq_ema_decay to avoid oversmoothing when encoder momentum ramps up
-                d = self.vq_ema_decay
-                for p, p_ema in zip(self.vector_quantizer.parameters(), self.vector_quantizer_ema.parameters()):
-                    p_ema.data.mul_(d).add_((1.0 - d) * p.detach().data)
-
+                    
             running_loss += loss.item()
 
         epoch_avg_loss = running_loss / len(self.train_loader)

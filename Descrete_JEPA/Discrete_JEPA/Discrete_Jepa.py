@@ -62,13 +62,6 @@ class DiscreteJEPA(nn.Module):
             embedding_dim=config["encoder_embed_dim"],
             commitment_cost=config["commitment_cost"]
         )
-        # NOTE: Do NOT call init_weights on vector_quantizer.
-        # VQ.py initializes codebook on the unit sphere (L2 normalized).
-        # init_weights would override it with wrong distribution.
-
-        # EMA (teacher) vector quantizer - deepcopy preserves the unit-sphere init
-        self.vector_quantizer_ema = copy.deepcopy(self.vector_quantizer)
-        self.vector_quantizer_ema.eval()  # Teacher VQ: always eval (never run EMA updates)
 
         # Grounding head: decodes predicted patch embeddings back to raw patch values.
         # Applied to pred_p2p (predictor output at target positions) vs actual target

@@ -262,7 +262,6 @@ def forcasting_zeroshot(self, path):
         self.encoder_for.to(self.device)
         self.predictor_for.to(self.device)
         self.vector_quantizer.to(self.device)
-        self.vector_quantizer_ema.to(self.device)
 
         if run_type == 'TRAINED':
             # Load trained weights from checkpoint
@@ -270,10 +269,6 @@ def forcasting_zeroshot(self, path):
             self.encoder_for.load_state_dict(name_loader["target_encoder"])
             if "vector_quantizer" in name_loader:
                 self.vector_quantizer.load_state_dict(name_loader["vector_quantizer"])
-            if "vector_quantizer_ema" in name_loader:
-                self.vector_quantizer_ema.load_state_dict(name_loader["vector_quantizer_ema"])
-            else:
-                self.vector_quantizer_ema.load_state_dict(self.vector_quantizer.state_dict())
         # For RANDOM: models already randomly initialized from __init__
         else:
             # Re-initialize to fresh random weights every time
@@ -323,7 +318,7 @@ def forcasting_zeroshot(self, path):
                     encoder_out = self.encoder_for(context_patches)
                     encoder_patches = encoder_out["data_patches"]         # [B*n_v, ctx, embed_dim]
                     encoder_semantic = encoder_out["quantized_semantic"]  # [B*n_v, S,   embed_dim]
-                    _, encoder_semantic, _, _, _, _ = self.vector_quantizer_ema(encoder_semantic)
+                    _, encoder_semantic, _, _, _, _ = self.vector_quantizer(encoder_semantic)
                 # reshape to [B, n_v, embed_dim, num_patch/S]
                 enc_p = encoder_patches.reshape(B, n_v, num_patches, embed_dim).permute(0, 1, 3, 2)
                 enc_s = encoder_semantic.reshape(B, n_v, num_sem,    embed_dim).permute(0, 1, 3, 2)
@@ -354,7 +349,7 @@ def forcasting_zeroshot(self, path):
                 encoder_out = self.encoder_for(context_patches)
                 encoder_patches = encoder_out["data_patches"]         # [B*n_v, ctx, D]
                 encoder_semantic = encoder_out["quantized_semantic"]  # [B*n_v, S,   D]
-                _, encoder_semantic, _, _, _, _ = self.vector_quantizer_ema(encoder_semantic)
+                _, encoder_semantic, _, _, _, _ = self.vector_quantizer(encoder_semantic)
                 enc_p = encoder_patches.reshape(B, n_v, num_patches, embed_dim).permute(0, 1, 3, 2)
                 enc_s = encoder_semantic.reshape(B, n_v, num_sem,    embed_dim).permute(0, 1, 3, 2)
                 pred_p2p = self.forecast_head_patch(enc_p)  # [B, h_t*P_L, n_v]
