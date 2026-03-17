@@ -127,6 +127,13 @@ def get_args_parser():
     parser.add_argument('--c_in_classification', type=int, default=9, help='Number of input channels for classification (UCI HAR has 9 sensors).')
 
     args = parser.parse_args()
+    # Config file takes precedence over argparse defaults for all shared keys
+    args.out_dim               = cfg.get('out_dim',               args.out_dim)
+    args.use_bn_in_head        = cfg.get('use_bn_in_head',        args.use_bn_in_head)
+    args.norm_last_layer       = cfg.get('norm_last_layer',       args.norm_last_layer)
+    args.warmup_teacher_temp   = cfg.get('warmup_teacher_temp',   args.warmup_teacher_temp)
+    args.teacher_temp          = cfg.get('teacher_temp',          args.teacher_temp)
+    args.warmup_teacher_temp_epochs = cfg.get('warmup_teacher_temp_epochs', args.warmup_teacher_temp_epochs)
     print('args:', args)
     num_patch = args.num_patches
     print('number of patches:', num_patch)

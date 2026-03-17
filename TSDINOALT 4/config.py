@@ -25,8 +25,8 @@ config = {
 
     # ── Model architecture ────────────────────────────────────────────────────
     "c_in": 7,          # number of input variables  (9 for UCI HAR)
-    "patch_len": 12,
-    "step_size": 12,    # stride between patches
+    "patch_len": 16,
+    "step_size": 16,    # stride between patches
     "num_patches": 32,  # window length in patches
     "n_layers": 5,
     "n_heads": 16,
@@ -37,7 +37,7 @@ config = {
     "drop_path_rate": 0.1,
 
     # ── DINO head ─────────────────────────────────────────────────────────────
-    "out_dim": 20000,
+    "out_dim": 1024,
     "use_bn_in_head": False,
     "norm_last_layer": True,
 
