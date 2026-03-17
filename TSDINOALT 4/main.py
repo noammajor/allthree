@@ -716,45 +716,28 @@ def test_run(args):
             accumulated_mae += batch_mae * batch_size
             num_samples += batch_size
 
-            # Save visualization for first batch only (with history context)
+            # Save visualization for first batch only
             if not first_batch_saved:
                 n_vars = outputs.shape[-1]
-                fig, axes = plt.subplots(n_vars, 1, figsize=(15, 3 * n_vars), sharex=True)
+                fig, axes = plt.subplots(n_vars, 1, figsize=(12, 3 * n_vars), sharex=True)
                 if n_vars == 1: axes = [axes]
 
                 for v in range(n_vars):
-                    history = samples[0, :, v].cpu().numpy()
                     var_name = args.parms_for_testing_forecasting[v] if hasattr(args, 'parms_for_testing_forecasting') else f"Var {v}"
 
-                    # Truth & Pred: [Pred_Len]
                     truth_segment = labels[0, :, v].cpu().numpy()
-                    pred_segment = outputs[0, :, v].cpu().numpy()
+                    pred_segment  = outputs[0, :, v].cpu().numpy()
+                    x = np.arange(len(truth_segment))
 
-                    # Connect forecast to last history value
-                    last_val = history[-1]
-                    truth_connected = np.concatenate(([last_val], truth_segment))
-                    pred_connected = np.concatenate(([last_val], pred_segment))
-
-                    # X-axis coordinates
-                    x_history = np.arange(len(history))
-                    x_future = np.arange(len(history) - 1, len(history) + len(truth_segment))
-
-                    # Plot history (context)
-                    axes[v].plot(x_history, history, label="History", color="blue", alpha=0.5)
-
-                    # Plot ground truth and forecast
-                    axes[v].plot(x_future, truth_connected, label="Ground Truth", color="black", linewidth=1.5)
-                    axes[v].plot(x_future, pred_connected, label="Forecast", color="red", linestyle="--", alpha=0.8)
-
-                    # Add vertical line at "now" (end of history)
-                    axes[v].axvline(x=len(history)-1, color="gray", linestyle=":", alpha=0.5)
+                    axes[v].plot(x, truth_segment, label="Ground Truth", color="black", linewidth=1.5)
+                    axes[v].plot(x, pred_segment,  label="Forecast",     color="red",   linestyle="--", alpha=0.8)
 
                     axes[v].set_title(f"Variable {v}: {var_name}", fontsize=14, loc='left')
                     axes[v].legend(loc="upper left")
                     axes[v].grid(True, alpha=0.2)
                     axes[v].set_ylabel("Value")
 
-                plt.xlabel("Time Steps (History | Forecast)")
+                plt.xlabel("Forecast Time Steps")
                 plt.tight_layout()
 
                 save_path = f"test_results/tests/full_multivariable_forecast_{args.path_num}.png"

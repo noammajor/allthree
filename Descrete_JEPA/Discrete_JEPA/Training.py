@@ -112,7 +112,6 @@ def evaluate(self, val_loader, lambda_weights, beta_vq, current_global_step, tot
         for patches, masks, non_masks in val_loader:
             patches, masks, non_masks = patches.to(self.device), masks.to(self.device), non_masks.to(self.device)
             # masks=context_idx (visible patches), non_masks=target_idx (hidden patches to predict)
-            patches = (patches - self.norm_mean) / self.norm_std
             target_out = self.encoder_ema(patches)
             target_out["data_patches"] = apply_mask(target_out["data_patches"], non_masks)         # EMA: keep hidden (target) patches
             context_out = self.encoder(patches, mask=masks)        # student: see visible (context) patches
@@ -198,8 +197,6 @@ def train_and_evaluate(self):
             patches = patches.to(self.device)
             masks = masks.to(self.device)
             non_masks = non_masks.to(self.device)
-            patches = (patches - self.norm_mean) / self.norm_std
-            current_global_step += 1
             with torch.no_grad():
                 target_out = self.encoder_ema(patches)
                 target_out["data_patches"] = apply_mask(target_out["data_patches"], non_masks)   # EMA keeps target (masked) patches
