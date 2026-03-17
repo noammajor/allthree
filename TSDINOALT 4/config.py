@@ -139,18 +139,18 @@ config = {
     ],
 
     # 8 local views — student sees these + the 2 global views above.
-    # crop_ratio = 0.5 → student sees half-length sub-windows (harder task).
+    # All full-length (crop_ratio = 1.0); diversity comes from augmentation type only.
     "local_crops": [
         # ── type (a): stochastic zeroing of finest-level detail coefficients ──
-        {"type": "dwt_zero_out_detail", "crop_ratio": 0.5, "zero_out_ratio": 0.2, "finest_levels": 1},
-        {"type": "dwt_zero_out_detail", "crop_ratio": 0.5, "zero_out_ratio": 0.3, "finest_levels": 1},
-        {"type": "dwt_zero_out_detail", "crop_ratio": 0.5, "zero_out_ratio": 0.4, "finest_levels": 1},
-        {"type": "dwt_zero_out_detail", "crop_ratio": 0.5, "zero_out_ratio": 0.5, "finest_levels": 2},
+        {"type": "dwt_zero_out_detail", "crop_ratio": 1.0, "zero_out_ratio": 0.2, "finest_levels": 1},
+        {"type": "dwt_zero_out_detail", "crop_ratio": 1.0, "zero_out_ratio": 0.3, "finest_levels": 1},
+        {"type": "dwt_zero_out_detail", "crop_ratio": 1.0, "zero_out_ratio": 0.4, "finest_levels": 1},
+        {"type": "dwt_zero_out_detail", "crop_ratio": 1.0, "zero_out_ratio": 0.5, "finest_levels": 2},
         # ── type (b): Gaussian noise on all detail coefficients ──────────────
-        {"type": "dwt_high_perturb",    "crop_ratio": 0.5, "high_perturb_noise_range": (0.02, 0.05)},
-        {"type": "dwt_high_perturb",    "crop_ratio": 0.5, "high_perturb_noise_range": (0.03, 0.08)},
-        {"type": "dwt_high_perturb",    "crop_ratio": 0.5, "high_perturb_noise_range": (0.05, 0.12)},
-        {"type": "dwt_high_perturb",    "crop_ratio": 0.5, "high_perturb_noise_range": (0.08, 0.15)},
+        {"type": "dwt_high_perturb",    "crop_ratio": 1.0, "high_perturb_noise_range": (0.02, 0.05)},
+        {"type": "dwt_high_perturb",    "crop_ratio": 1.0, "high_perturb_noise_range": (0.03, 0.08)},
+        {"type": "dwt_high_perturb",    "crop_ratio": 1.0, "high_perturb_noise_range": (0.05, 0.12)},
+        {"type": "dwt_high_perturb",    "crop_ratio": 1.0, "high_perturb_noise_range": (0.08, 0.15)},
     ],
 
     # ── Downstream: Forecasting ───────────────────────────────────────────────

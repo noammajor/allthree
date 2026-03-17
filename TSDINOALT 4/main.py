@@ -575,7 +575,8 @@ def test_run(args):
         batch_size=args.num_patches,
         patch_size=args.patch_len,
         pred_len = args.pred_len,
-        var_list=args.parms_for_testing_forecasting
+        var_list=args.parms_for_testing_forecasting,
+        scaler=dataset_forecasting_train.scaler,
     )
     data_loader_forecasting_test = torch.utils.data.DataLoader(
         dataset_forecasting_test,
@@ -613,34 +614,34 @@ def test_run(args):
     ])
     model = model.to(device)
     if args.path_num != 0:
-        path = f"./checkpoints/dino_patchtst/checkpoint{args.path_num}.pth"
-        print(path)
-        #checkpoint = torch.load(path, weights_only=False)
+        path = os.path.join(args.output_dir, f'checkpoint{args.path_num}.pth')
+        print(f"Loading checkpoint: {path}")
+        if not os.path.exists(path):
+            print(f"  WARNING: checkpoint not found at {path}, using random init.")
+        else:
+            checkpoint = torch.load(path, weights_only=False, map_location=device)
 
-        # FIX: Remap checkpoint keys to match forecasting model structure
-        # DINO checkpoint has: module.backbone.backbone.X
-        # Forecasting model expects: backbone.X
-        state_dict = checkpoint['student']
-        new_state_dict = {}
-        model_state = model.state_dict()
+            # Use teacher (EMA) weights — better representations than student for downstream.
+            # Keys: TSMultiCropWrapper.backbone.* → strip first 'backbone.' to match PatchTST.
+            state_dict = checkpoint['teacher']
+            new_state_dict = {}
+            model_state = model.state_dict()
 
-        for key, value in state_dict.items():
-            # Remove 'module.' prefix (from DistributedDataParallel)
-            new_key = key.replace('module.', '')
-            # Remove first 'backbone.' (from TSMultiCropWrapper)
-            if new_key.startswith('backbone.'):
-                new_key = new_key.replace('backbone.', '', 1)
+            for key, value in state_dict.items():
+                # Remove 'module.' prefix (DistributedDataParallel)
+                new_key = key.replace('module.', '')
+                # Strip one 'backbone.' (TSMultiCropWrapper wrapper)
+                if new_key.startswith('backbone.'):
+                    new_key = new_key[len('backbone.'):]
 
-            # Only add if key exists in model and shapes match
-            if new_key in model_state and model_state[new_key].shape == value.shape:
-                new_state_dict[new_key] = value
+                # Only load if key exists in forecasting model and shapes match
+                if new_key in model_state and model_state[new_key].shape == value.shape:
+                    new_state_dict[new_key] = value
 
-        # Load remapped weights
-        missing, unexpected = model.load_state_dict(new_state_dict, strict=False)
-        print(f"✓ Loaded DINO checkpoint from epoch {args.path_num}")
-        print(f"  Loaded {len(new_state_dict)} encoder weights")
-        print(f"  Skipped {len(missing)} keys (forecasting head + shape mismatches)")
-        print(f"  Ignored {len(unexpected)} unexpected keys (DINO head)")
+            missing, unexpected = model.load_state_dict(new_state_dict, strict=False)
+            print(f"✓ Loaded DINO teacher checkpoint from epoch {args.path_num}")
+            print(f"  Loaded {len(new_state_dict)} / {len(model_state)} weights")
+            print(f"  Missing (new head): {len(missing)}  |  Unexpected (DINO head): {len(unexpected)}")
 
     # learning rate scheduler
     lr_schedule = utils.cosine_scheduler(

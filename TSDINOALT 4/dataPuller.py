@@ -160,7 +160,7 @@ class DataPullerForecastingTesting(Dataset):
     def __init__(self, data_dir, split='test', batch_size=16, patch_size=12,
                  step_size=1, pred_len=96,
                  var_list=['HUFL', 'HULL', 'MUFL', 'MULL', 'LUFL', 'LULL', 'OT'],
-                 c_in=7):
+                 c_in=7, scaler=None):
         self.data_dir    = data_dir
         self.which       = split
         self.patch_size  = patch_size
@@ -170,6 +170,7 @@ class DataPullerForecastingTesting(Dataset):
         self.window_size = self.num_patches * self.patch_size
         self.var_names   = var_list
         self.var_indices = []
+        self._ext_scaler = scaler  # optional pre-fitted scaler from training set
 
         self.Train_Val_Test_splits = {'train': [], 'val': [], 'test': []}
         self.all_map               = {'train': [], 'val': [], 'test': []}
@@ -194,9 +195,13 @@ class DataPullerForecastingTesting(Dataset):
         val_np   = data[train_len : train_len + val_len, self.var_indices]
         test_np  = data[train_len + val_len :,           self.var_indices]
 
-        # Fit StandardScaler on training columns only
-        self.scaler = StandardScaler()
-        self.scaler.fit(train_np)
+        # Use the scaler from the training dataset if provided; otherwise fit a new one.
+        # Always fit on train split so val/test are scaled with the same statistics.
+        if self._ext_scaler is not None:
+            self.scaler = self._ext_scaler
+        else:
+            self.scaler = StandardScaler()
+            self.scaler.fit(train_np)
 
         self.Train_Val_Test_splits = {
             'train': [torch.from_numpy(self.scaler.transform(train_np))],
@@ -302,7 +307,7 @@ class DataPullerUCIDINO(Dataset):
     """
     UCI HAR Dataset loader for DINO pretraining.
     Returns only the time series data (no labels) with augmentations.
-    StandardScaler is fitted on the loaded split (always train during DINO pretraining).
+    StandardScaler is always fitted on the training split only.
     """
     def __init__(self, data_dir, split='train', transform=None,
                  batch_size=16, patch_size=16, step_size=16, c_in=9):
@@ -323,25 +328,28 @@ class DataPullerUCIDINO(Dataset):
         self.data    = self._load_data()
         self.windows = list(range(0, len(self.data) - self.window_size + 1, self.step_size))
 
-    def _load_data(self):
-        split_dir   = os.path.join(self.data_dir, self.split)
+    def _load_raw_signals(self, split):
+        split_dir   = os.path.join(self.data_dir, split)
         signals_dir = os.path.join(split_dir, 'Inertial Signals')
         all_signals = []
         for signal_name in self.signal_files:
-            file_path = os.path.join(signals_dir, f'{signal_name}_{self.split}.txt')
+            file_path = os.path.join(signals_dir, f'{signal_name}_{split}.txt')
             if not os.path.exists(file_path):
-                alt_split = 'test' if self.split == 'train' else 'train'
+                alt_split = 'test' if split == 'train' else 'train'
                 alt_path  = os.path.join(signals_dir, f'{signal_name}_{alt_split}.txt')
                 if os.path.exists(alt_path):
                     file_path = alt_path
             all_signals.append(np.loadtxt(file_path))   # [n_samples, seq_len=128]
+        return np.stack(all_signals, axis=-1).astype(np.float32)  # [n_samples, 128, 9]
 
-        data = np.stack(all_signals, axis=-1).astype(np.float32)  # [n_samples, 128, 9]
+    def _load_data(self):
+        data = self._load_raw_signals(self.split)  # [n_samples, 128, 9]
         n_samples, seq_len, n_vars = data.shape
 
-        # Fit StandardScaler on training data, flatten for fitting
+        # Always fit StandardScaler on training data only
+        train_data = self._load_raw_signals('train') if self.split != 'train' else data
         self.scaler = StandardScaler()
-        self.scaler.fit(data.reshape(-1, n_vars))
+        self.scaler.fit(train_data.reshape(-1, n_vars))
         data = self.scaler.transform(data.reshape(-1, n_vars))    # [n_samples*128, 9]
 
         data = torch.from_numpy(data)
