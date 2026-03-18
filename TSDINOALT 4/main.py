@@ -134,6 +134,10 @@ def get_args_parser():
     args.warmup_teacher_temp   = cfg.get('warmup_teacher_temp',   args.warmup_teacher_temp)
     args.teacher_temp          = cfg.get('teacher_temp',          args.teacher_temp)
     args.warmup_teacher_temp_epochs = cfg.get('warmup_teacher_temp_epochs', args.warmup_teacher_temp_epochs)
+    args.epochs_forecasting    = cfg.get('epochs_forecasting',    args.epochs_forecasting)
+    args.lr_forecasting        = cfg.get('lr_forecasting',        args.lr_forecasting)
+    args.min_lr_forecasting    = cfg.get('min_lr_forecasting',    args.min_lr_forecasting)
+    args.pred_len              = cfg.get('pred_len',              args.pred_len)
     print('args:', args)
     num_patch = args.num_patches
     print('number of patches:', num_patch)
@@ -651,12 +655,14 @@ def test_run(args):
             print(f"  Missing (new head): {len(missing)}  |  Unexpected (DINO head): {len(unexpected)}")
 
     # learning rate scheduler
+    # warmup_epochs must be < epochs_forecasting; use 1 epoch of warmup (10% of default 10 epochs)
+    _forecasting_warmup = max(1, args.epochs_forecasting // 10)
     lr_schedule = utils.cosine_scheduler(
         args.lr_forecasting* (args.batch_size_per_gpu * utils.get_world_size()) / 256.,
         args.min_lr_forecasting,
         args.epochs_forecasting,
         len(data_loader_forecasting_train),
-        warmup_epochs=args.warmup_epochs,
+        warmup_epochs=_forecasting_warmup,
     )
     for param in model.backbone.parameters():
         param.requires_grad = False

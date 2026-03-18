@@ -85,7 +85,7 @@ def compute_discrete_jepa_loss(
         #self.config["grounding_coeff"] * grounding_loss
     )
     if batch_idx % 5 == 0:
-        print(f"TOTAL: {total_loss.item():.4f} | P2P: {l_p2p.item():.4f}, S2P: {l_s2p.item():.4f}, P2S: {l_p2s.item():.4f}, VQ: {l_vq.item():.4f}, Perp: {l_preplexity:.4f}, TokDiv: {token_div_loss.item():.4f}, XDecorr: {cross_decorr_loss.item():.4f}, Grnd: {grounding_loss.item():.4f}")
+        print(f"TOTAL: {total_loss.item():.4f} | P2P: {l_p2p.item():.4f}, S2P: {l_s2p.item():.4f}, P2S: {l_p2s.item():.4f}, VQ: {l_vq.item():.4f}, Perp: {l_preplexity:.4f}")
         print(f"  var[patch={var_loss_context_patch.item():.4f} tok={var_loss_context_token.item():.4f}] cov[patch={cov_loss_context_patch.item():.4f} tok={cov_loss_context_token.item():.4f}] | codes={active_codes} ({usage_pct:.1f}%)")
 
     return total_loss, {
