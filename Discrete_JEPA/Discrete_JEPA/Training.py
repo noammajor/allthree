@@ -80,9 +80,9 @@ def compute_discrete_jepa_loss(
         #self.config["preplexity_coeff"] * l_preplexity +
         #self.config["token_diversity"] * token_div_loss +
         self.config["vigreg_var"] * (var_loss_context_token+var_loss_context_patch) +
-        self.config["vigreg_covar"] * (cov_loss_context_patch+cov_loss_context_token) +
-        #self.config["decorr_coeff"] * cross_decorr_loss +
-        #self.config["grounding_coeff"] * grounding_loss
+        self.config["vigreg_covar"] * (cov_loss_context_patch+cov_loss_context_token)
+        #+ self.config["decorr_coeff"] * cross_decorr_loss
+        #+ self.config["grounding_coeff"] * grounding_loss
     )
     if batch_idx % 5 == 0:
         print(f"TOTAL: {total_loss.item():.4f} | P2P: {l_p2p.item():.4f}, S2P: {l_s2p.item():.4f}, P2S: {l_p2s.item():.4f}, VQ: {l_vq.item():.4f}, Perp: {l_preplexity:.4f}")

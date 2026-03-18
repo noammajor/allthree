@@ -1,7 +1,7 @@
 """
 Unified training + forecasting runner for:
   - dino      (TSDINOALT 4)
-  - jepa      (Descrete_JEPA / DiscreteJEPA)
+  - jepa      (Discrete_JEPA / DiscreteJEPA)
   - patchtst  (PatchTST_self_supervised)
 
 Usage
@@ -211,13 +211,13 @@ def _resolve_jepa_path(p: str, jepa_dir: Path) -> str:
 def run_jepa(skip_train: bool = False,
              pretrain_dataset: str = None,
              forecast_dataset: str = None):
-    jepa_dir = Path(__file__).parent / "Descrete_JEPA"
+    jepa_dir = Path(__file__).parent / "Discrete_JEPA"
     _add_path(jepa_dir)
 
     import torch
     from config_files.config_pretrain import config
     from data_loaders.data_puller import DataPullerDJepa, ForcastingDataPullerDescrete
-    from Discrete_JEPA.Descrete_Jepa import DiscreteJEPA
+    from Discrete_JEPA.Discrete_Jepa import DiscreteJEPA
 
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
@@ -342,23 +342,36 @@ def run_patchtst(skip_train: bool = False, pretrain_dataset: str = None, forecas
              "--dset_pretrain", "ettm1",
              "--n_epochs_pretrain", "10"],
             cwd=patchtst_dir,
+            capture_output=True, text=True,
         )
+        print(result.stdout)
         if result.returncode != 0:
             print("[PatchTST] Pretraining exited with errors.")
+            print(result.stderr)
             return
     else:
         print("[PatchTST] Skipping pretraining.")
 
     # ── forecasting downstream ────────────────────────────────────────────────
+    # Reconstruct the pretrained model path using the same naming convention as patchtst_pretrain.py
+    pretrained_model_path = os.path.join(
+        patchtst_dir,
+        "saved_models", "ettm1", "masked_patchtst", "based_model",
+        "patchtst_pretrained_cw512_patch12_stride12_epochs-pretrain10_mask0.4_model1.pth"
+    )
     print("\n[PatchTST] Running forecasting fine-tuning …")
     result = subprocess.run(
         [sys.executable, "patchtst_finetune.py",
          "--dset_finetune", "ettm1",
-         "--is_finetune", "1"],
+         "--is_finetune", "1",
+         "--pretrained_model", pretrained_model_path],
         cwd=patchtst_dir,
+        capture_output=True, text=True,
     )
+    print(result.stdout)
     if result.returncode != 0:
         print("[PatchTST] Forecasting fine-tuning exited with errors.")
+        print(result.stderr)
 
 
 # ── entry point ───────────────────────────────────────────────────────────────

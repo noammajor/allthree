@@ -1,14 +1,14 @@
 """Central dataset registry.
 
 Add a new entry to DATASETS to support a new CSV dataset.
-All paths resolve relative to  Descrete_JEPA/data/  so they work in
+All paths resolve relative to  Discrete_JEPA/data/  so they work in
 Colab (after drive mount) and locally without editing path strings anywhere else.
 """
 
 import os
 from pathlib import Path
 
-_DATA_DIR = Path(__file__).parent / "Descrete_JEPA" / "data"
+_DATA_DIR = Path(__file__).parent / "Discrete_JEPA" / "data"
 
 # JEPA groups variables into chunks of this many columns.
 # Every group must be the same size; the last group is padded by repeating

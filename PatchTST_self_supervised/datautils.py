@@ -11,7 +11,7 @@ import os as _os
 # Root directory containing ETT CSVs — resolved relative to this file so it works
 # from any working directory (Colab, local, etc.)
 _ETT_DATA_DIR = _os.path.normpath(
-    _os.path.join(_os.path.dirname(_os.path.abspath(__file__)), '..', 'Descrete_JEPA', 'data')
+    _os.path.join(_os.path.dirname(_os.path.abspath(__file__)), '..', 'Discrete_JEPA', 'data')
 ) + _os.sep
 
 from src.data.datamodule import DataLoaders

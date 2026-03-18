@@ -1,5 +1,5 @@
 # ETTm1 configuration for Discrete JEPA
-# Data paths use "./" relative to Descrete_JEPA/ directory;
+# Data paths use "./" relative to Discrete_JEPA/ directory;
 # Train_and_downstream.py resolves these to absolute paths before passing to the model.
 
 config = {

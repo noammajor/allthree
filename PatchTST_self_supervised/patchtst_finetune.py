@@ -53,6 +53,7 @@ parser.add_argument('--model_type', type=str, default='based_model', help='for m
 
 
 args = parser.parse_args()
+args.dset = args.dset_finetune
 print('args:', args)
 args.save_path = 'saved_models/' + args.dset_finetune + '/masked_patchtst/' + args.model_type + '/'
 if not os.path.exists(args.save_path): os.makedirs(args.save_path)

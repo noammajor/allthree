@@ -16,7 +16,7 @@ from config_files.config_full_jepa_classic import  configJEPA
 from main.utils import init_weights
 from utils.modules import MLP, Block
 from pos_embeder import PosEmbeder
-from Discrete_JEPA.Descrete_Jepa import DiscreteJEPA
+from Discrete_JEPA.Discrete_Jepa import DiscreteJEPA
 from VQVAE.VQVAE import vqvae
 from jepa_classic.JEPA_classic import JEPAClassic
 import argparse
