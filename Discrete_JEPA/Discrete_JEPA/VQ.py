@@ -11,7 +11,7 @@ class VectorQuantizer(nn.Module):
         self._num_embeddings = num_embeddings
 
         self._embedding = nn.Embedding(self._num_embeddings, self._embedding_dim)
-        self._embedding.weight.data.uniform_(-1 / self._num_embeddings, 1 / self._num_embeddings)
+        self._embedding.weight.data.normal_(0, 0.5)
         self._commitment_cost = commitment_cost
 
     def forward(self, inputs):
@@ -49,10 +49,9 @@ class VectorQuantizer(nn.Module):
         # encoder outputs and codebook weights)
         # soft_token_probs: per-token distribution over codebook [N, codebook_size]
         # soft_avg_probs:   batch-averaged distribution           [codebook_size]
-        #soft_token_probs = F.softmax(-distances, dim=-1)
-        #soft_avg_probs   = soft_token_probs.mean(dim=0)
+        soft_token_probs = F.softmax(-distances, dim=-1)
+        soft_avg_probs   = soft_token_probs.mean(dim=0)
 
-        #return loss, quantized, perplexity, encoding_indices, encodings, soft_avg_probs, soft_token_probs
         return loss, quantized, perplexity, encoding_indices, encodings, soft_avg_probs
 
 

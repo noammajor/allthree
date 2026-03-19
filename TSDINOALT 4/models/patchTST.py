@@ -76,11 +76,10 @@ class PatchTST(nn.Module):
         z: tensor [bs x num_patch x n_vars x patch_len]
         """   
         if self.head_type in ['prediction', 'regression', 'classification', 'CLS_Prediction']:
+            z = self.normalization(z, mode='norm')   # instance-normalize before encoder
             patches_tensor = z.unfold(dimension=1, size=self.patch_len, step=self.patch_len)
         else:
             patches_tensor = z.unfold(dimension=1, size=self.patch_len, step=self.step_size)
-        # PatchTST expects: [Batch, Num_Patches, n_vars, Patch_Len]
-        #patches_tensor = patches_tensor.permute(0, 2, 3, 1)
         z = self.backbone(patches_tensor)
         if self.head_type == "Dino":
             z = z[:, 0, :, :]                                                            # z: [bs x nvars x d_model]
@@ -89,15 +88,10 @@ class PatchTST(nn.Module):
             z = z[:, 0, :, :]
             z = self.head(z)
         else:
-            # FIXED: Use ALL tokens (CLS + patches) instead of skipping CLS
-            # - CLS token (position 0) was trained by DINO with contrastive loss
-            # - Patch tokens (1:) provide granular temporal information
-            # - Forecasting head learns to combine both sources
             z = z  # Keep all tokens: [bs x num_patch+1 x nvars x d_model]
             z = z.permute(0, 2, 3, 1)  # [bs x nvars x d_model x num_patch+1]
             z = self.head(z)
-        #if self.operation == 'test':
-            #z = self.normalization(z, mode='denorm')                         
+        z = self.normalization(z, mode='denorm')   # undo instance norm on forecast output
         return z
 
 

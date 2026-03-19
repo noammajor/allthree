@@ -134,23 +134,25 @@ config = {
     # 2 global views — teacher sees only these.
     # Keep crop_ratio = 1.0 so teacher targets are stable full-length sequences.
     "global_crops": [
-        {"type": "dwt_soft_threshold", "crop_ratio": 1.0, "soft_threshold_sigma": 0.2},
-        {"type": "dwt_soft_threshold", "crop_ratio": 1.0, "soft_threshold_sigma": 0.4},
+        {"type": "dwt_low_pass",       "crop_ratio": 1.0},                                           # pure structural skeleton
+        {"type": "dwt_soft_threshold", "crop_ratio": 1.0, "soft_threshold_sigma": 0.3},
     ],
 
     # 8 local views — student sees these + the 2 global views above.
     # All full-length (crop_ratio = 1.0); diversity comes from augmentation type only.
     "local_crops": [
-        # ── type (a): stochastic zeroing of finest-level detail coefficients ──
-        {"type": "dwt_zero_out_detail", "crop_ratio": 1.0, "zero_out_ratio": 0.2, "finest_levels": 1},
+        # ── type (a): frequency-band scale invariance (new) ──────────────────
+        {"type": "dwt_band_scale", "crop_ratio": 1.0, "band_scale_approx_range": (0.8, 1.2), "band_scale_detail_range": (0.5, 1.5)},
+        {"type": "dwt_band_scale", "crop_ratio": 1.0, "band_scale_approx_range": (0.7, 1.3), "band_scale_detail_range": (0.4, 1.6)},
+        # ── type (b): mixed — random choice per sample ───────────────────────
+        {"type": ["dwt_band_scale", "dwt_zero_out_detail"], "crop_ratio": 1.0},
+        {"type": ["dwt_band_scale", "dwt_high_perturb"],    "crop_ratio": 1.0},
+        # ── type (c): stochastic zeroing of finest-level detail coefficients ─
         {"type": "dwt_zero_out_detail", "crop_ratio": 1.0, "zero_out_ratio": 0.3, "finest_levels": 1},
-        {"type": "dwt_zero_out_detail", "crop_ratio": 1.0, "zero_out_ratio": 0.4, "finest_levels": 1},
         {"type": "dwt_zero_out_detail", "crop_ratio": 1.0, "zero_out_ratio": 0.5, "finest_levels": 2},
-        # ── type (b): Gaussian noise on all detail coefficients ──────────────
-        {"type": "dwt_high_perturb",    "crop_ratio": 1.0, "high_perturb_noise_range": (0.02, 0.05)},
+        # ── type (d): Gaussian noise on all detail coefficients ──────────────
         {"type": "dwt_high_perturb",    "crop_ratio": 1.0, "high_perturb_noise_range": (0.03, 0.08)},
         {"type": "dwt_high_perturb",    "crop_ratio": 1.0, "high_perturb_noise_range": (0.05, 0.12)},
-        {"type": "dwt_high_perturb",    "crop_ratio": 1.0, "high_perturb_noise_range": (0.08, 0.15)},
     ],
 
     # ── Downstream: Forecasting ───────────────────────────────────────────────

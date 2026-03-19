@@ -617,8 +617,7 @@ def test_run(args):
         drop_path_rate=args.drop_path_rate,
         step_size=1
         )
-    #criterion = nn.MSELoss()
-    criterion = nn.HuberLoss(delta=1.0)
+    criterion = nn.MSELoss()
     optimizer = torch.optim.Adam([
         {'params': model.backbone.parameters(), 'lr': 1e-4},
         {'params': model.head.parameters(), 'lr': 1e-3}

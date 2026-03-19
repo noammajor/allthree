@@ -177,6 +177,10 @@ def train_and_evaluate(self):
     total_loss, total_var_encoder, total_var_decoder = 0.0, 0.0, 0.0
     self.save_model(self.encoder, self.encoder_ema, self.predictor, self.optimizer, 0, f"{self.path_save}_INITIAL")
     current_global_step = 0
+    wd_start     = self.config["weight_decay"]
+    wd_end       = self.config.get("weight_decay_end", wd_start * 10)
+    wd_pred_start = self.config["weight_decay_pred"]
+    wd_pred_end   = self.config.get("weight_decay_pred_end", wd_pred_start * 10)
     # Training Loop
     for epoch in range(self.config["num_epochs"]):
         print(f"Starting Epoch {epoch}/{self.config['num_epochs']}")
@@ -195,6 +199,11 @@ def train_and_evaluate(self):
         for batch_idx, (patches, masks, non_masks) in enumerate(self.train_loader):
             self.optimizer.zero_grad()
             m = next(self.ema_scheduler)
+            # Cosine weight decay schedule: ramp wd from start → end over total steps
+            wd_factor = 0.5 * (1 - math.cos(math.pi * current_global_step / max(self.total_steps, 1)))
+            self.optimizer.param_groups[0]["weight_decay"] = wd_start + wd_factor * (wd_end - wd_start)
+            self.optimizer.param_groups[1]["weight_decay"] = wd_pred_start + wd_factor * (wd_pred_end - wd_pred_start)
+            # param_groups[2] is codebook — weight_decay stays 0
             patches = patches.to(self.device)
             masks = masks.to(self.device)
             non_masks = non_masks.to(self.device)

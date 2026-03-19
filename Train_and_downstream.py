@@ -336,11 +336,13 @@ def run_patchtst(skip_train: bool = False, pretrain_dataset: str = None, forecas
 
     # ── pretraining ───────────────────────────────────────────────────────────
     if not skip_train:
-        print("\n[PatchTST] Starting pretraining …")
+        _pretrain_dset = pretrain_dataset or "ettm1"
+        print(f"\n[PatchTST] Starting pretraining on {_pretrain_dset} …")
         result = subprocess.run(
             [sys.executable, "patchtst_pretrain.py",
-             "--dset_pretrain", "ettm1",
-             "--n_epochs_pretrain", "10"],
+             "--dset_pretrain", _pretrain_dset,
+             "--n_epochs_pretrain", "10",
+             "--d_ff", "512"],
             cwd=patchtst_dir,
             capture_output=True, text=True,
         )
@@ -350,20 +352,23 @@ def run_patchtst(skip_train: bool = False, pretrain_dataset: str = None, forecas
             print(result.stderr)
             return
     else:
+        _pretrain_dset = pretrain_dataset or "ettm1"
         print("[PatchTST] Skipping pretraining.")
 
     # ── forecasting downstream ────────────────────────────────────────────────
+    _forecast_dset = forecast_dataset or _pretrain_dset
     # Reconstruct the pretrained model path using the same naming convention as patchtst_pretrain.py
     pretrained_model_path = os.path.join(
         patchtst_dir,
-        "saved_models", "ettm1", "masked_patchtst", "based_model",
+        "saved_models", _pretrain_dset, "masked_patchtst", "based_model",
         "patchtst_pretrained_cw512_patch12_stride12_epochs-pretrain10_mask0.4_model1.pth"
     )
-    print("\n[PatchTST] Running forecasting fine-tuning …")
+    print(f"\n[PatchTST] Running forecasting fine-tuning on {_forecast_dset} …")
     result = subprocess.run(
         [sys.executable, "patchtst_finetune.py",
-         "--dset_finetune", "ettm1",
+         "--dset_finetune", _forecast_dset,
          "--is_finetune", "1",
+         "--d_ff", "512",
          "--pretrained_model", pretrained_model_path],
         cwd=patchtst_dir,
         capture_output=True, text=True,

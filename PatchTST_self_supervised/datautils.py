@@ -62,7 +62,7 @@ def get_dls(params):
                 )
 
     elif params.dset == 'etth1':
-        root_path = '/data/datasets/public/ETDataset/ETT-small/'
+        root_path = _ETT_DATA_DIR
         size = [params.context_points, 0, params.target_points]
         dls = DataLoaders(
                 datasetCls=Dataset_ETT_hour,
@@ -80,7 +80,7 @@ def get_dls(params):
 
 
     elif params.dset == 'etth2':
-        root_path = '/data/datasets/public/ETDataset/ETT-small/'
+        root_path = _ETT_DATA_DIR
         size = [params.context_points, 0, params.target_points]
         dls = DataLoaders(
                 datasetCls=Dataset_ETT_hour,
@@ -98,7 +98,7 @@ def get_dls(params):
 
 
     elif params.dset == 'electricity':
-        root_path = '/data/datasets/public/electricity/'
+        root_path = _ETT_DATA_DIR
         size = [params.context_points, 0, params.target_points]
         dls = DataLoaders(
                 datasetCls=Dataset_Custom,
@@ -115,7 +115,7 @@ def get_dls(params):
                 )
 
     elif params.dset == 'traffic':
-        root_path = '/data/datasets/public/traffic/'
+        root_path = _ETT_DATA_DIR
         size = [params.context_points, 0, params.target_points]
         dls = DataLoaders(
                 datasetCls=Dataset_Custom,
@@ -132,7 +132,7 @@ def get_dls(params):
                 )
 
     elif params.dset == 'weather':
-        root_path = '/data/datasets/public/weather/'
+        root_path = _ETT_DATA_DIR
         size = [params.context_points, 0, params.target_points]
         dls = DataLoaders(
                 datasetCls=Dataset_Custom,
