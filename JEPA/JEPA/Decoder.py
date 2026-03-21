@@ -7,8 +7,6 @@
 
 import torch
 import torch.nn as nn
-import numpy as np
-from utils.modules import *
 
 
 class LinearDecoder(nn.Module):

@@ -75,7 +75,7 @@ def forcasting_zeroshot(self, path):
         self.predictor_for.eval()
         self.forecast_head_patch.eval()
 
-        mse_p2p_list, mse_s2p_list, mae_p2p_list, mae_s2p_list = [], [], [], []
+        mse_p2p_list, mae_p2p_list = [], []
         last_batch = None  # keep last batch for plotting
 
         with torch.no_grad():

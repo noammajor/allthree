@@ -42,12 +42,9 @@ class CrossAttentionBlock(nn.Module):
 
 class JEPAPredictor(nn.Module):
     """
-    Bottleneck transformer predictor for Discrete JEPA.
+    Bottleneck transformer predictor for JEPA (P2P only).
 
-    Three prediction tasks, each with its own cross-attention stack:
-      P2P — context patch embeddings → target patch embeddings
-      S2P — semantic tokens          → target patch embeddings
-      P2S — context patch embeddings → semantic token embeddings
+    Context patch embeddings → predicted target patch embeddings at masked positions.
 
     Encoder embeddings are projected down to predictor_embed_dim for
     cross-attention, then projected back up to encoder embed_dim for output.
@@ -56,14 +53,12 @@ class JEPAPredictor(nn.Module):
 
     def __init__(
         self,
-        num_semantic_tokens: int,
         embed_dim: int,
         config: dict,
         **kwargs,
     ):
         super().__init__()
-        self.embed_dim           = embed_dim
-        self.num_semantic_tokens = num_semantic_tokens
+        self.embed_dim = embed_dim
 
         num_patches   = config["ratio_patches"]
         pred_dim      = config.get("predictor_embed_dim", embed_dim // 2)
@@ -132,19 +127,14 @@ class JEPAPredictor(nn.Module):
     def forward(
         self,
         x_input: torch.Tensor,
-        task: str = "P2P",
         target_mask: torch.Tensor = None,
         **kwargs,
     ) -> torch.Tensor:
         """
-        x_input:     [B*F, N_ctx, encoder_dim]  context patches   (P2P, P2S)
-                  OR [B*F, S,     encoder_dim]  semantic tokens   (S2P)
-        target_mask: [B, N_t]                   target patch indices (P2P, S2P)
+        x_input:     [B*F, N_ctx, encoder_dim]  context patch embeddings
+        target_mask: [B, N_t]                   target patch indices
 
-        Returns:
-            P2P → [B*F, N_t, encoder_dim]
-            S2P → [B*F, N_t, encoder_dim]
-            P2S → [B*F, S,   encoder_dim]
+        Returns: [B*F, N_t, encoder_dim]
         """
         B  = x_input.shape[0]
         kv = self.kv_proj(x_input)   # [B*F, N_kv, pred_dim]

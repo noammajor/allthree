@@ -24,7 +24,7 @@ from JEPA.Training import (
 
 class JEPA(nn.Module):
     def __init__(self, config, input_dim, num_patches, steps_per_epoch, train_loader, val_loader, test_loader, forcasting_train, forcasting_val, forcasting_test):
-        super(DiscreteJEPA, self).__init__()
+        super().__init__()
         self.config = config
         self.device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
         self.train_loader = train_loader
@@ -109,15 +109,7 @@ class JEPA(nn.Module):
             1 - (1 - _m0) * (math.cos(math.pi * i / _T) + 1) / 2
             for i in range(_T + 1)
         )
-        self.vq_ema_decay = self.config.get("vq_ema_decay", 0.99)
-
         self.best_model = None
-        self.log_file = "perplexity_log.csv"
-        self.logsss ="info.csv"
-        with open(self.log_file, "w") as f:
-            f.write("epoch,step,type,perplexity\n")
-        with open(self.logsss, "w") as g:
-            g.write("epoch,step,type,perplexity\n")
         
         
         #forcasting

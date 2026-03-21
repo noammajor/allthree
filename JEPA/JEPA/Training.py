@@ -63,7 +63,7 @@ def compute_jepa_loss(
     }
 
 
-def evaluate(self, val_loader, lambda_weights, beta_vq, current_global_step, total_training_steps, vq_warmup, epoch):
+def evaluate(self, val_loader, current_global_step, total_training_steps, epoch):
     self.encoder.eval()
     self.encoder_ema.eval()
     self.predictor.eval()
@@ -156,7 +156,6 @@ def train_and_evaluate(self):
             wd_factor = 0.5 * (1 - math.cos(math.pi * current_global_step / max(self.total_steps, 1)))
             self.optimizer.param_groups[0]["weight_decay"] = wd_start + wd_factor * (wd_end - wd_start)
             self.optimizer.param_groups[1]["weight_decay"] = wd_pred_start + wd_factor * (wd_pred_end - wd_pred_start)
-            # param_groups[2] is codebook — weight_decay stays 0
             patches = patches.to(self.device)
             masks = masks.to(self.device)
             non_masks = non_masks.to(self.device)
@@ -166,7 +165,7 @@ def train_and_evaluate(self):
                 z_p_target = target_out["data_patches"]
 
             context_out = self.encoder(patches, mask=masks)       # student encoder sees context patches
-            loss, loss_dict = self.compute_discrete_jepa_loss(
+            loss, loss_dict = self.compute_jepa_loss(
                 context_out,
                 target_out,
                 masks,

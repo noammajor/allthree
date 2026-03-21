@@ -36,7 +36,7 @@ class DiscreteJEPA(nn.Module):
         self.val_loader = val_loader
         self.test_loader = test_loader
         self.encoder = Encoder(
-            num_patches=len(self.train_loader.dataset[0][0]),
+            num_patches=config["ratio_patches"],
             num_semantic_tokens=config["num_semantic_tokens"],
             dim_in=input_dim,
             embed_dim=config["encoder_embed_dim"],
@@ -50,7 +50,7 @@ class DiscreteJEPA(nn.Module):
             res_attention=True,
         )
         self.predictor = Predictor(
-            num_patches=len(self.train_loader.dataset[0][0]),
+            num_patches=config["ratio_patches"],
             num_semantic_tokens=config["num_semantic_tokens"],
             embed_dim=config["encoder_embed_dim"],
             nhead=config["predictor_nhead"],
@@ -63,19 +63,8 @@ class DiscreteJEPA(nn.Module):
             commitment_cost=config["commitment_cost"]
         )
 
-        # Grounding head: decodes predicted patch embeddings back to raw patch values.
-        # Applied to pred_p2p (predictor output at target positions) vs actual target
-        # patch values. Prevents predictions from collapsing to abstract shortcuts.
-        D = config["encoder_embed_dim"]
-        P_L = config["patch_size"]
-        self.grounding_head = nn.Sequential(
-            nn.Linear(D, D // 2),
-            nn.GELU(),
-            nn.Linear(D // 2, P_L),
-        )
-
         encoder_params = list(self.encoder.parameters())
-        other_params_pred = list(self.predictor.parameters()) + list(self.grounding_head.parameters())
+        other_params_pred = list(self.predictor.parameters())
         codebook_params = list(self.vector_quantizer.parameters())
 
         # Switched to AdamW for better transformer training stability

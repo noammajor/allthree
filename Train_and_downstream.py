@@ -1,8 +1,9 @@
 """
 Unified training + forecasting runner for:
-  - dino      (TSDINOALT 4)
-  - jepa      (Discrete_JEPA / DiscreteJEPA)
-  - patchtst  (PatchTST_self_supervised)
+  - dino        (TSDINOALT 4)
+  - jepa        (Discrete_JEPA / DiscreteJEPA)
+  - jepa_simple (JEPA — P2P only, no VQ / semantic tokens)
+  - patchtst    (PatchTST_self_supervised)
 
 Usage
 -----
@@ -351,6 +352,129 @@ def run_jepa(skip_train: bool = False,
             getattr(model, method_name)(f"_epoch{epoch}")
 
 
+# ── JEPA (P2P only, no VQ / semantic tokens) ─────────────────────────────────
+
+def run_jepa_simple(skip_train: bool = False,
+                    pretrain_dataset: str = None,
+                    forecast_dataset: str = None):
+    jepa_dir  = Path(__file__).parent / "JEPA"
+    djepa_dir = Path(__file__).parent / "Discrete_JEPA"
+    _add_path(jepa_dir)
+    _add_path(djepa_dir)   # for data_loaders (shared with Discrete JEPA)
+
+    import importlib.util, torch
+
+    # Load config by file path to avoid sys.modules cache conflicts
+    _spec = importlib.util.spec_from_file_location(
+        "config_jepa", jepa_dir / "config_files" / "config_jepa.py")
+    _mod = importlib.util.module_from_spec(_spec)
+    _spec.loader.exec_module(_mod)
+    config = dict(_mod.config)
+
+    from data_loaders.data_puller import (DataPullerDJepa, ForcastingDataPullerDescrete,
+                                          MonashDataPullerJEPA)
+    from JEPA.Jepa import JEPA
+
+    pretrain_on_monash = config.get('pretrain_on_monash', False)
+
+    forecast_dataset = forecast_dataset or config.get("forecast_dataset")
+    if pretrain_on_monash:
+        if forecast_dataset is None:
+            raise ValueError("forecast_dataset must be set when pretrain_on_monash=True")
+        ds_fore = get_dataset_info(forecast_dataset)
+        monash_dir = config.get('monash_data_dir', '../Monash')
+        if not os.path.isabs(monash_dir):
+            config['monash_data_dir'] = str((jepa_dir / monash_dir).resolve())
+        print("\n" + "="*60)
+        print(f"  MODEL: JEPA (P2P)")
+        print(f"  pretrain: Monash ({config['monash_data_dir']})   forecast: {forecast_dataset}")
+        print("="*60)
+    else:
+        pretrain_dataset = pretrain_dataset or config.get("pretrain_dataset")
+        forecast_dataset = forecast_dataset or pretrain_dataset
+        if pretrain_dataset is None:
+            raise ValueError("pretrain_dataset not set — specify via run() or config_jepa.py")
+        ds_pre  = get_dataset_info(pretrain_dataset)
+        ds_fore = get_dataset_info(forecast_dataset)
+        n_groups = len(ds_pre["jepa_groups"])
+        config["path_data"]       = [_resolve_jepa_path(ds_pre["csv_path"], jepa_dir)] * n_groups
+        config["timestampcols"]   = [ds_pre["timestamp_col"]] * n_groups
+        config["input_variables"] = ds_pre["jepa_groups"]
+        print("\n" + "="*60)
+        print(f"  MODEL: JEPA (P2P)")
+        print(f"  pretrain: {pretrain_dataset}   forecast: {forecast_dataset}")
+        print("="*60)
+
+    config["path_data_forcasting"]       = [_resolve_jepa_path(ds_fore["csv_path"], jepa_dir)]
+    config["timestampcols_forcasting"]   = [ds_fore["timestamp_col"]]
+    config["input_variables_forcasting"] = [ds_fore["columns"]]
+
+    # ── data ─────────────────────────────────────────────────────────────────
+    print("\n[JEPA] Loading datasets …")
+    if pretrain_on_monash:
+        train_dataset = MonashDataPullerJEPA(config, which='train')
+        val_dataset   = MonashDataPullerJEPA(config, which='val')
+        test_dataset  = MonashDataPullerJEPA(config, which='test')
+    else:
+        train_dataset = DataPullerDJepa(
+            data_paths          = config["path_data"],
+            patch_size          = config["patch_size"],
+            batch_size          = config["batch_size"],
+            ratio_patches       = config["ratio_patches"],
+            mask_ratio          = config["mask_ratio"],
+            masking_type        = config["masking_type"],
+            num_semantic_tokens = config.get("num_semantic_tokens", 0),
+            input_variables     = config["input_variables"],
+            timestamp_cols      = config["timestampcols"],
+            type_data           = "train",
+            val_prec            = config["val_prec"],
+            test_prec           = config["test_prec"],
+            stride              = config.get("stride", None),
+            num_blocks          = config.get("num_blocks", 1),
+        )
+        val_dataset  = copy.copy(train_dataset); val_dataset.which  = "val"
+        test_dataset = copy.copy(train_dataset); test_dataset.which = "test"
+
+    train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=config["batch_size"], shuffle=True)
+    val_loader   = torch.utils.data.DataLoader(val_dataset,   batch_size=config["batch_size"], shuffle=True)
+    test_loader  = torch.utils.data.DataLoader(test_dataset,  batch_size=config["batch_size"], shuffle=False)
+    input_dim    = len(train_loader.dataset[0][0][0])
+
+    forecasting_data = ForcastingDataPullerDescrete(config)
+    val_fc   = copy.copy(forecasting_data); val_fc.which  = "val";  val_fc.rebuild()
+    test_fc  = copy.copy(forecasting_data); test_fc.which = "test"; test_fc.rebuild()
+    train_loader_fc = torch.utils.data.DataLoader(forecasting_data, batch_size=config["batch_size"], shuffle=True)
+    val_loader_fc   = torch.utils.data.DataLoader(val_fc,           batch_size=config["batch_size"], shuffle=True)
+    test_loader_fc  = torch.utils.data.DataLoader(test_fc,          batch_size=config["batch_size"], shuffle=False)
+
+    # ── model ─────────────────────────────────────────────────────────────────
+    model = JEPA(
+        config          = config,
+        input_dim       = input_dim,
+        num_patches     = len(train_loader.dataset[0][0]),
+        steps_per_epoch = len(train_loader),
+        train_loader    = train_loader,
+        val_loader      = val_loader,
+        test_loader     = test_loader,
+        forcasting_train = train_loader_fc,
+        forcasting_val   = val_loader_fc,
+        forcasting_test  = test_loader_fc,
+    )
+
+    # ── pretraining ───────────────────────────────────────────────────────────
+    if not skip_train:
+        print("\n[JEPA] Starting pretraining …")
+        model.train_and_evaluate()
+    else:
+        print("[JEPA] Skipping pretraining.")
+
+    # ── forecasting downstream ────────────────────────────────────────────────
+    print("\n[JEPA] Running zeroshot forecasting …")
+    for epoch in range(200, config["num_epochs"] + 1, 100):
+        print(f"\n  → checkpoint epoch {epoch}")
+        model.forcasting_zeroshot(f"_epoch{epoch}")
+
+
 # ── PatchTST ──────────────────────────────────────────────────────────────────
 
 def run_patchtst(skip_train: bool = False, pretrain_dataset: str = None, forecast_dataset: str = None):
@@ -408,9 +532,10 @@ def run_patchtst(skip_train: bool = False, pretrain_dataset: str = None, forecas
 # ── entry point ───────────────────────────────────────────────────────────────
 
 RUNNERS = {
-    "dino":     run_dino,
-    "jepa":     run_jepa,
-    "patchtst": run_patchtst,
+    "dino":       run_dino,
+    "jepa":       run_jepa,
+    "jepa_simple": run_jepa_simple,
+    "patchtst":   run_patchtst,
 }
 
 def run(model: str, skip_train: bool = False,

@@ -184,13 +184,6 @@ def train_and_evaluate(self):
     # Training Loop
     for epoch in range(self.config["num_epochs"]):
         print(f"Starting Epoch {epoch}/{self.config['num_epochs']}")
-        # Mask curriculum: 1 block → 2 → 3 as training progresses
-        if epoch < 200:
-            self.train_loader.dataset.num_blocks = 1
-        elif epoch < 500:
-            self.train_loader.dataset.num_blocks = 2
-        else:
-            self.train_loader.dataset.num_blocks = self.config["num_blocks"]
         self.encoder.train()
         self.predictor.train()
         self.vector_quantizer.train()  # Enable EMA codebook updates during training
@@ -258,19 +251,20 @@ def train_and_evaluate(self):
                 "predictor": copy.deepcopy(self.predictor.state_dict()),
                 "encoder_ema": copy.deepcopy(self.encoder_ema.state_dict()),
                 "optimizer": copy.deepcopy(self.optimizer.state_dict()),
+                "vector_quantizer": copy.deepcopy(self.vector_quantizer.state_dict()),
                 "epoch": epoch
             }
             print("New best validation loss! Model saved.")
-        if epoch >= 100 and epoch % 100 == 0:
-            self.save_model(self.encoder, self.encoder_ema, self.predictor, self.optimizer, epoch, f"{self.path_save}_epoch{epoch}")
-            self.best_model = {
-                "encoder": copy.deepcopy(self.encoder.state_dict()),
-                "predictor": copy.deepcopy(self.predictor.state_dict()),
-                "encoder_ema": copy.deepcopy(self.encoder_ema.state_dict()),
-                "optimizer": copy.deepcopy(self.optimizer.state_dict()),
-                "epoch": epoch
-            }
-            print("saved at epoch")
+        self.save_model(self.encoder, self.encoder_ema, self.predictor, self.optimizer, epoch, f"{self.path_save}_epoch{epoch}")
+        self.best_model = {
+            "encoder": copy.deepcopy(self.encoder.state_dict()),
+            "predictor": copy.deepcopy(self.predictor.state_dict()),
+            "encoder_ema": copy.deepcopy(self.encoder_ema.state_dict()),
+            "optimizer": copy.deepcopy(self.optimizer.state_dict()),
+            "vector_quantizer": copy.deepcopy(self.vector_quantizer.state_dict()),
+            "epoch": epoch
+        }
+        print("saved at epoch")
 
     print("Training complete. Starting Final Test:")
     test_loss, test_dict = self.evaluate(self.test_loader, self.config["lambda_weights"], self.config["beta_vq"], current_global_step, self.total_steps, self.config["vq_warmup"], 101)
