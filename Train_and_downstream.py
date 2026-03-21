@@ -146,24 +146,39 @@ def run_dino(skip_train: bool = False,
     from config import config as dino_cfg
     import main as dino_main
 
-    # Resolve datasets: explicit arg > config value > error
-    pretrain_dataset = pretrain_dataset or dino_cfg.get("pretrain_dataset")
-    forecast_dataset = forecast_dataset or dino_cfg.get("forecast_dataset") or pretrain_dataset
-    if pretrain_dataset is None:
-        raise ValueError("pretrain_dataset not set — specify via run() or config.py")
-
-    print("\n" + "="*60)
-    print(f"  MODEL: DINO  (TSDINOALT 4)")
-    print(f"  pretrain: {pretrain_dataset}   forecast: {forecast_dataset}")
-    print("="*60)
-
-    ds_pre  = get_dataset_info(pretrain_dataset)
-    ds_fore = get_dataset_info(forecast_dataset)
-
-    # Override dataset-specific fields in the config before building args
     dino_cfg = dict(dino_cfg)
-    dino_cfg["data_path"]                      = ds_pre["csv_path"]
-    dino_cfg["c_in"]                           = ds_pre["c_in"]
+    pretrain_on_monash = dino_cfg.get('pretrain_on_monash', False)
+
+    # Resolve forecast dataset (always needed for downstream)
+    forecast_dataset = forecast_dataset or dino_cfg.get("forecast_dataset")
+    if pretrain_on_monash:
+        # No pretrain CSV needed; derive c_in from forecast dataset
+        if forecast_dataset is None:
+            raise ValueError("forecast_dataset must be set when pretrain_on_monash=True")
+        ds_fore = get_dataset_info(forecast_dataset)
+        dino_cfg["c_in"] = ds_fore["c_in"]
+        # Resolve monash_data_dir relative to dino_dir
+        monash_dir = dino_cfg.get('monash_data_dir', '../Monash')
+        if not os.path.isabs(monash_dir):
+            dino_cfg['monash_data_dir'] = str((dino_dir / monash_dir).resolve())
+        print("\n" + "="*60)
+        print(f"  MODEL: DINO  (TSDINOALT 4)")
+        print(f"  pretrain: Monash ({dino_cfg['monash_data_dir']})   forecast: {forecast_dataset}")
+        print("="*60)
+    else:
+        pretrain_dataset = pretrain_dataset or dino_cfg.get("pretrain_dataset")
+        forecast_dataset = forecast_dataset or pretrain_dataset
+        if pretrain_dataset is None:
+            raise ValueError("pretrain_dataset not set — specify via run() or config.py")
+        ds_pre  = get_dataset_info(pretrain_dataset)
+        ds_fore = get_dataset_info(forecast_dataset)
+        dino_cfg["data_path"] = ds_pre["csv_path"]
+        dino_cfg["c_in"]      = ds_pre["c_in"]
+        print("\n" + "="*60)
+        print(f"  MODEL: DINO  (TSDINOALT 4)")
+        print(f"  pretrain: {pretrain_dataset}   forecast: {forecast_dataset}")
+        print("="*60)
+
     dino_cfg["data_path_forecast_training"]    = ds_fore["csv_path"]
     dino_cfg["data_path_forecast_test"]        = ds_fore["csv_path"]
     dino_cfg["parms_for_training_forecasting"] = ds_fore["columns"]
@@ -216,63 +231,74 @@ def run_jepa(skip_train: bool = False,
 
     import torch
     from config_files.config_pretrain import config
-    from data_loaders.data_puller import DataPullerDJepa, ForcastingDataPullerDescrete
+    from data_loaders.data_puller import (DataPullerDJepa, ForcastingDataPullerDescrete,
+                                          MonashDataPullerJEPA)
     from Discrete_JEPA.Discrete_Jepa import DiscreteJEPA
 
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-
-    # Resolve datasets: explicit arg > config value > error
-    pretrain_dataset = pretrain_dataset or config.get("pretrain_dataset")
-    forecast_dataset = forecast_dataset or config.get("forecast_dataset") or pretrain_dataset
-    if pretrain_dataset is None:
-        raise ValueError("pretrain_dataset not set — specify via run() or config_pretrain.py")
-
-    print("\n" + "="*60)
-    print(f"  MODEL: Discrete JEPA")
-    print(f"  pretrain: {pretrain_dataset}   forecast: {forecast_dataset}")
-    print("="*60)
-
-    ds_pre  = get_dataset_info(pretrain_dataset)
-    ds_fore = get_dataset_info(forecast_dataset)
-    n_groups = len(ds_pre["jepa_groups"])
-
-    # Override dataset-specific fields in the config
     config = dict(config)
-    config["path_data"]                    = [ds_pre["csv_path"]] * n_groups
-    config["timestampcols"]                = [ds_pre["timestamp_col"]] * n_groups
-    config["input_variables"]              = ds_pre["jepa_groups"]
-    config["path_data_forcasting"]         = [ds_fore["csv_path"]]
-    config["timestampcols_forcasting"]     = [ds_fore["timestamp_col"]]
-    config["input_variables_forcasting"]   = [ds_fore["columns"]]
+    pretrain_on_monash = config.get('pretrain_on_monash', False)
 
-    # Resolve any remaining relative paths (config fields not yet overridden)
-    config["path_data"] = [
-        _resolve_jepa_path(p, jepa_dir) for p in config["path_data"]
-    ]
-    config["path_data_forcasting"] = [
-        _resolve_jepa_path(p, jepa_dir) for p in config["path_data_forcasting"]
-    ]
+    # Resolve forecast dataset (always needed for downstream)
+    forecast_dataset = forecast_dataset or config.get("forecast_dataset")
+    if pretrain_on_monash:
+        if forecast_dataset is None:
+            raise ValueError("forecast_dataset must be set when pretrain_on_monash=True")
+        ds_fore = get_dataset_info(forecast_dataset)
+        # Resolve monash_data_dir relative to jepa_dir
+        monash_dir = config.get('monash_data_dir', '../Monash')
+        if not os.path.isabs(monash_dir):
+            config['monash_data_dir'] = str((jepa_dir / monash_dir).resolve())
+        print("\n" + "="*60)
+        print(f"  MODEL: Discrete JEPA")
+        print(f"  pretrain: Monash ({config['monash_data_dir']})   forecast: {forecast_dataset}")
+        print("="*60)
+    else:
+        pretrain_dataset = pretrain_dataset or config.get("pretrain_dataset")
+        forecast_dataset = forecast_dataset or pretrain_dataset
+        if pretrain_dataset is None:
+            raise ValueError("pretrain_dataset not set — specify via run() or config_pretrain.py")
+        ds_pre  = get_dataset_info(pretrain_dataset)
+        ds_fore = get_dataset_info(forecast_dataset)
+        n_groups = len(ds_pre["jepa_groups"])
+        config["path_data"]       = [_resolve_jepa_path(ds_pre["csv_path"], jepa_dir)] * n_groups
+        config["timestampcols"]   = [ds_pre["timestamp_col"]] * n_groups
+        config["input_variables"] = ds_pre["jepa_groups"]
+        print("\n" + "="*60)
+        print(f"  MODEL: Discrete JEPA")
+        print(f"  pretrain: {pretrain_dataset}   forecast: {forecast_dataset}")
+        print("="*60)
+
+    # Always set forecasting paths from forecast dataset
+    config["path_data_forcasting"]       = [_resolve_jepa_path(ds_fore["csv_path"], jepa_dir)]
+    config["timestampcols_forcasting"]   = [ds_fore["timestamp_col"]]
+    config["input_variables_forcasting"] = [ds_fore["columns"]]
 
     # ── data ─────────────────────────────────────────────────────────────────
     print("\n[JEPA] Loading datasets …")
-    train_dataset = DataPullerDJepa(
-        data_paths         = config["path_data"],
-        patch_size         = config["patch_size"],
-        batch_size         = config["batch_size"],
-        ratio_patches      = config["ratio_patches"],
-        mask_ratio         = config["mask_ratio"],
-        masking_type       = config["masking_type"],
-        num_semantic_tokens= config["num_semantic_tokens"],
-        input_variables    = config["input_variables"],
-        timestamp_cols     = config["timestampcols"],
-        type_data          = "train",
-        val_prec           = config["val_prec"],
-        test_prec          = config["test_prec"],
-        stride             = config.get("stride", None),
-        num_blocks         = config.get("num_blocks", 1),
-    )
-    val_dataset  = copy.copy(train_dataset); val_dataset.which  = "val"
-    test_dataset = copy.copy(train_dataset); test_dataset.which = "test"
+    if pretrain_on_monash:
+        train_dataset = MonashDataPullerJEPA(config, which='train')
+        val_dataset   = MonashDataPullerJEPA(config, which='val')
+        test_dataset  = MonashDataPullerJEPA(config, which='test')
+    else:
+        train_dataset = DataPullerDJepa(
+            data_paths         = config["path_data"],
+            patch_size         = config["patch_size"],
+            batch_size         = config["batch_size"],
+            ratio_patches      = config["ratio_patches"],
+            mask_ratio         = config["mask_ratio"],
+            masking_type       = config["masking_type"],
+            num_semantic_tokens= config["num_semantic_tokens"],
+            input_variables    = config["input_variables"],
+            timestamp_cols     = config["timestampcols"],
+            type_data          = "train",
+            val_prec           = config["val_prec"],
+            test_prec          = config["test_prec"],
+            stride             = config.get("stride", None),
+            num_blocks         = config.get("num_blocks", 1),
+        )
+        val_dataset  = copy.copy(train_dataset); val_dataset.which  = "val"
+        test_dataset = copy.copy(train_dataset); test_dataset.which = "test"
 
     train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=config["batch_size"], shuffle=True)
     val_loader   = torch.utils.data.DataLoader(val_dataset,   batch_size=config["batch_size"], shuffle=True)

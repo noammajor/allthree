@@ -37,35 +37,40 @@ def _make_jepa_groups(columns: list, group_size: int = _JEPA_GROUP_SIZE) -> list
 
 DATASETS: dict = {
     "ettm1": {
-        "csv_filename":  "ETTm1.csv",
-        "patchtst_cls":  "ETT_minute",
-        "timestamp_col": "date",
-        "columns": ["HUFL", "HULL", "MUFL", "MULL", "LUFL", "LULL", "OT"],
+        "csv_filename":    "ETTm1.csv",
+        "patchtst_cls":    "ETT_minute",
+        "timestamp_col":   "date",
+        "columns":         ["HUFL", "HULL", "MUFL", "MULL", "LUFL", "LULL", "OT"],
+        "jepa_group_size": 7,   # all 7 vars in one group
     },
     "etth1": {
-        "csv_filename":  "ETTh1.csv",
-        "patchtst_cls":  "ETT_hour",
-        "timestamp_col": "date",
-        "columns": ["HUFL", "HULL", "MUFL", "MULL", "LUFL", "LULL", "OT"],
+        "csv_filename":    "ETTh1.csv",
+        "patchtst_cls":    "ETT_hour",
+        "timestamp_col":   "date",
+        "columns":         ["HUFL", "HULL", "MUFL", "MULL", "LUFL", "LULL", "OT"],
+        "jepa_group_size": 7,   # all 7 vars in one group
     },
     "etth2": {
-        "csv_filename":  "ETTh2.csv",
-        "patchtst_cls":  "ETT_hour",
-        "timestamp_col": "date",
-        "columns": ["HUFL", "HULL", "MUFL", "MULL", "LUFL", "LULL", "OT"],
+        "csv_filename":    "ETTh2.csv",
+        "patchtst_cls":    "ETT_hour",
+        "timestamp_col":   "date",
+        "columns":         ["HUFL", "HULL", "MUFL", "MULL", "LUFL", "LULL", "OT"],
+        "jepa_group_size": 7,   # all 7 vars in one group
     },
     "ettm2": {
-        "csv_filename":  "ETTm2.csv",
-        "patchtst_cls":  "ETT_minute",
-        "timestamp_col": "date",
-        "columns": ["HUFL", "HULL", "MUFL", "MULL", "LUFL", "LULL", "OT"],
+        "csv_filename":    "ETTm2.csv",
+        "patchtst_cls":    "ETT_minute",
+        "timestamp_col":   "date",
+        "columns":         ["HUFL", "HULL", "MUFL", "MULL", "LUFL", "LULL", "OT"],
+        "jepa_group_size": 7,   # all 7 vars in one group
     },
     "weather": {
-        "csv_filename":  "weather.csv",
-        "patchtst_cls":  "Custom",
-        "timestamp_col": "date",
+        "csv_filename":    "weather.csv",
+        "patchtst_cls":    "Custom",
+        "timestamp_col":   "date",
         # 20 numeric features + OT target column
-        "columns": [str(i) for i in range(1, 21)] + ["OT"],
+        "columns":         [str(i) for i in range(1, 21)] + ["OT"],
+        "jepa_group_size": 7,
     },
     "electricity": {
         "csv_filename":  "electricity.csv",
@@ -110,5 +115,6 @@ def get_dataset_info(name: str) -> dict:
         info["columns"] = [c for c in df.columns if c != info["timestamp_col"]]
 
     info["c_in"]        = len(info["columns"])
-    info["jepa_groups"] = _make_jepa_groups(info["columns"])
+    group_size          = info.pop("jepa_group_size", _JEPA_GROUP_SIZE)
+    info["jepa_groups"] = _make_jepa_groups(info["columns"], group_size)
     return info

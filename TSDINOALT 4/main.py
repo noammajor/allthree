@@ -1,3 +1,4 @@
+import copy
 import numpy as np
 from config import config as cfg
 import pandas as pd
@@ -7,7 +8,7 @@ from torch import nn
 import random
 import torch.nn.functional as F
 import torchvision.transforms as transforms
-from models.patchTST import PatchTST
+from models.patchTST import PatchTST, PatchReconDecoder
 import torch.distributed as dist
 import torch.backends.cudnn as cudnn
 import time
@@ -157,10 +158,22 @@ def train_TS_DINO(args):
         dwt_cfg      = cfg,
     )
 
-    # Check if using UCI HAR Dataset
-    if 'UCI HAR' in args.data_path:
+    # ── Select pretraining dataset ─────────────────────────────────────────────
+    if cfg.get('pretrain_on_monash', False):
+        print("Using Monash dataset for DINO pretraining")
+        combined_dataset = dpuller.MonashDataPuller(
+            data_dir  = cfg['monash_data_dir'],
+            split     = 'train',
+            transform = dataAugmentationDino,
+            batch_size= args.num_patches,
+            patch_size= args.patch_len,
+            step_size = args.step_size,
+            min_len   = cfg.get('monash_min_len', 512),
+        )
+        print(f"Monash dataset: {len(combined_dataset)} windows")
+    elif 'UCI HAR' in args.data_path:
         print("Using UCI HAR Dataset for DINO training")
-        dataset1 = dpuller.DataPullerUCIDINO(
+        combined_dataset = dpuller.DataPullerUCIDINO(
             data_dir=args.data_path,
             split='train',
             transform=dataAugmentationDino,
@@ -169,7 +182,6 @@ def train_TS_DINO(args):
             step_size=args.step_size,
             c_in=args.c_in
         )
-        combined_dataset = dataset1
     else:
         print("Using CSV datasets for DINO training")
         dataset1= dpuller.DataPuller(
@@ -189,6 +201,7 @@ def train_TS_DINO(args):
             step_size=args.step_size
         )
         combined_dataset = ConcatDataset([dataset1, dataset2])
+
     data_loader = torch.utils.data.DataLoader(
         combined_dataset,
         sampler = torch.utils.data.distributed.DistributedSampler(combined_dataset, shuffle=True),
@@ -273,6 +286,17 @@ def train_TS_DINO(args):
         p.requires_grad = False
     print(f"Student and Teacher are built: they are both TS networks.")
 
+    # ── Reconstruction decoders (MAE-style auxiliary loss) ────────────────────
+    use_reconstruction = cfg.get('use_reconstruction', False)
+    student_recon = None
+    teacher_recon_decoder = None
+    if use_reconstruction:
+        student_recon = PatchReconDecoder(embed_dim, args.patch_len).to(device)
+        teacher_recon_decoder = copy.deepcopy(student_recon)
+        for p in teacher_recon_decoder.parameters():
+            p.requires_grad = False
+        print("Reconstruction decoders created.")
+
 #-----------------Loss function --------------------
     dino_loss = DINOLoss(
         args.out_dim,
@@ -284,6 +308,9 @@ def train_TS_DINO(args):
     ).to(device)
 # ----------------Optimizer --------------------
     params_groups = utils.get_params_groups(student)
+    if use_reconstruction:
+        # Add reconstruction decoder params (no weight decay on bias/norm, but simpler: just add all)
+        params_groups.append({'params': student_recon.parameters()})
     if args.optimizer == "adamw":
         optimizer = torch.optim.AdamW(params_groups)
     elif args.optimizer == "sgd":
@@ -333,7 +360,9 @@ def train_TS_DINO(args):
             lr_schedule,
             wd_schedule,
             momentum_schedule,
-            args
+            args,
+            student_recon=student_recon,
+            teacher_recon_decoder=teacher_recon_decoder,
         )
         save_dict = {
             'student': student.state_dict(),
@@ -343,6 +372,9 @@ def train_TS_DINO(args):
             'args': args,
             'dino_loss': dino_loss.state_dict(),
         }
+        if use_reconstruction and student_recon is not None:
+            save_dict['student_recon'] = student_recon.state_dict()
+            save_dict['teacher_recon_decoder'] = teacher_recon_decoder.state_dict()
         #utils.save_on_master(save_dict, os.path.join(args.output_dir, 'checkpoint.pth'))
         if args.saveckp_freq and epoch % args.saveckp_freq == 0:
             utils.save_on_master(save_dict, os.path.join(args.output_dir, f'checkpoint{epoch}.pth'))
@@ -354,17 +386,25 @@ def train_TS_DINO(args):
     total_time_str = str(datetime.timedelta(seconds=int(total_time)))
     print('Training time {}'.format(total_time_str))
 
-def train_one_epoch(student, teacher, teacher_without_ddp, dino_loss, data_loader, optimizer, epoch, fp16_scaler, lr_schedule, wd_schedule, momentum_schedule, args):
+def train_one_epoch(student, teacher, teacher_without_ddp, dino_loss, data_loader, optimizer, epoch, fp16_scaler, lr_schedule, wd_schedule, momentum_schedule, args, student_recon=None, teacher_recon_decoder=None):
     student.train()
     teacher.train()  # teacher is in eval mode but we need to keep track of BN stats
+    if student_recon is not None:
+        student_recon.train()
     metric_logger = utils.MetricLogger(delimiter="  ")
     metric_logger.add_meter('lr', utils.SmoothedValue(window_size=1, fmt='{value:.6f}'))
     metric_logger.add_meter('weight_decay', utils.SmoothedValue(window_size=1, fmt='{value:.6f}'))
     header = 'Epoch: [{}]'.format(epoch)
     device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
+    n_global = len(cfg['global_crops'])
+    n_dino   = n_global + len(cfg['local_crops'])
+    recon_loss_weight = cfg.get('recon_loss_weight', 0.5)
     for it, batch in enumerate(metric_logger.log_every(data_loader, 10, header)):
         samples = batch
         samples = [s.to(device, non_blocking=True) for s in samples]
+        # Separate DINO crops from optional reconstruction pair
+        dino_samples   = samples[:n_dino]
+        use_recon_this = (student_recon is not None) and (len(samples) == n_dino + 2)
         # update learning rate and weight decay according to their schedule
         it_global = it + epoch * len(data_loader)
         for i, param_group in enumerate(optimizer.param_groups):
@@ -374,9 +414,36 @@ def train_one_epoch(student, teacher, teacher_without_ddp, dino_loss, data_loade
         metric_logger.update(lr=optimizer.param_groups[0]['lr'])
         metric_logger.update(weight_decay=optimizer.param_groups[0]['weight_decay'])
         with torch.cuda.amp.autocast(fp16_scaler is not None):
-            teacher_output = teacher(samples[:len(cfg['global_crops'])])
-            student_output = student(samples)
+            teacher_output = teacher(dino_samples[:n_global])
+            student_output = student(dino_samples)
             loss = dino_loss(student_output, teacher_output, epoch)
+
+            # ── Reconstruction loss (MAE-style, original data only) ────────────
+            if use_recon_this:
+                full_orig   = samples[n_dino]      # [B, seq_len, n_vars]  → teacher input
+                masked_orig = samples[n_dino + 1]  # [B, seq_len, n_vars]  → student input
+
+                # Teacher encodes full original (no grad — teacher already frozen)
+                with torch.no_grad():
+                    t_tokens = teacher_without_ddp.backbone.forward_recon(full_orig)
+                    # [B, num_patch, n_vars, d_model]
+
+                # Student encodes masked original
+                s_tokens = student.module.backbone.forward_recon(masked_orig)
+                # [B, num_patch, n_vars, d_model]
+
+                B, num_patch, n_vars, d_model = t_tokens.shape
+                # Reshape → [B * n_vars, num_patch, d_model] for decoder
+                t_flat = t_tokens.permute(0, 2, 1, 3).reshape(B * n_vars, num_patch, d_model)
+                s_flat = s_tokens.permute(0, 2, 1, 3).reshape(B * n_vars, num_patch, d_model)
+
+                t_recon = teacher_recon_decoder(t_flat)  # [B*n_vars, num_patch, patch_len]
+                s_recon = student_recon(s_flat)           # [B*n_vars, num_patch, patch_len]
+
+                recon_loss = F.mse_loss(s_recon, t_recon.detach())
+                loss = loss + recon_loss_weight * recon_loss
+                metric_logger.update(recon_loss=recon_loss.item())
+
         if not math.isfinite(loss.item()):
             print("Loss is {}, stopping training".format(loss.item()), force=True)
             sys.exit(1)
@@ -398,11 +465,15 @@ def train_one_epoch(student, teacher, teacher_without_ddp, dino_loss, data_loade
                                               args.freeze_last_layer)
             fp16_scaler.step(optimizer)
             fp16_scaler.update()
-         # EMA update for the teacher
+        # EMA update for the teacher
         with torch.no_grad():
             m = momentum_schedule[it_global]  # momentum parameter
             for param_q, param_k in zip(student.module.parameters(), teacher_without_ddp.parameters()):
                 param_k.data.mul_(m).add_((1 - m) * param_q.detach().data)
+            # EMA update for the reconstruction teacher decoder
+            if use_recon_this:
+                for param_q, param_k in zip(student_recon.parameters(), teacher_recon_decoder.parameters()):
+                    param_k.data.mul_(m).add_((1 - m) * param_q.detach().data)
 
         # logging
         if device.type == 'cuda':
@@ -479,8 +550,11 @@ class DataAugmentationDino:
     """
 
     def __init__(self, global_crops, local_crops, dwt_cfg):
-        self.global_crops = global_crops
-        self.local_crops  = local_crops
+        self.global_crops       = global_crops
+        self.local_crops        = local_crops
+        self.use_reconstruction = dwt_cfg.get('use_reconstruction', False)
+        self.recon_mask_ratio   = dwt_cfg.get('recon_mask_ratio',   0.4)
+        self.patch_len          = dwt_cfg.get('patch_len',          16)
         # Pre-build one DWTAugmentation per (crop_index, aug_type) pair
         self._transforms = self._build_transforms(global_crops + local_crops, dwt_cfg)
 
@@ -547,18 +621,35 @@ class DataAugmentationDino:
         start = np.random.randint(0, timesteps - crop_len + 1)
         return x[start : start + crop_len, :]
 
+    def _mask_patches(self, x):
+        """Randomly zero out recon_mask_ratio fraction of non-overlapping patches.
+        x: [seq_len, n_vars] — the ORIGINAL (unaugmented) input.
+        Returns masked copy of same shape.
+        """
+        n_patches = x.shape[0] // self.patch_len
+        masked    = x.clone()
+        for p in range(n_patches):
+            if random.random() < self.recon_mask_ratio:
+                masked[p * self.patch_len : (p + 1) * self.patch_len] = 0.0
+        return masked
+
     def __call__(self, x):
+        # ── DINO contrastive views (DWT augmented) ────────────────────────────
         crops     = []
         all_specs = self.global_crops + self.local_crops
         for i, spec in enumerate(all_specs):
             crop_ratio = spec.get('crop_ratio', 1.0)
             x_in       = self._random_crop(x, crop_ratio) if crop_ratio < 1.0 else x
-
-            aug_type = spec['type']
+            aug_type   = spec['type']
             if isinstance(aug_type, list):
                 aug_type = random.choice(aug_type)
-
             crops.append(self._transforms[i][aug_type](x_in))
+
+        # ── Reconstruction pair (original data only, no DWT) ──────────────────
+        if self.use_reconstruction:
+            crops.append(x.clone())          # full original  → teacher recon
+            crops.append(self._mask_patches(x))  # masked original → student recon
+
         return crops
 
 #----Test run -----

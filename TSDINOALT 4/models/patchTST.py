@@ -94,6 +94,35 @@ class PatchTST(nn.Module):
         z = self.normalization(z, mode='denorm')   # undo instance norm on forecast output
         return z
 
+    def forward_recon(self, z):
+        """Encode z and return all patch token embeddings (no CLS) for reconstruction.
+
+        z:       [bs, seq_len, n_vars]
+        returns: [bs, num_patch, n_vars, d_model]
+        Uses non-overlapping patches (step = patch_len). No RevIN applied.
+        """
+        patches_tensor = z.unfold(dimension=1, size=self.patch_len, step=self.patch_len)
+        tokens = self.backbone(patches_tensor)   # [bs, num_patch+1, n_vars, d_model]
+        return tokens[:, 1:, :, :]              # drop CLS  [bs, num_patch, n_vars, d_model]
+
+
+class PatchReconDecoder(nn.Module):
+    """Maps patch token embeddings back to raw patch values.
+
+    Input:  [N, num_patch, d_model]  (N = bs * n_vars)
+    Output: [N, num_patch, patch_len]
+    """
+    def __init__(self, d_model: int, patch_len: int):
+        super().__init__()
+        self.decoder = nn.Sequential(
+            nn.Linear(d_model, d_model),
+            nn.GELU(),
+            nn.Linear(d_model, patch_len),
+        )
+
+    def forward(self, x):
+        return self.decoder(x)
+
 
 class RegressionHead(nn.Module):
     def __init__(self, n_vars, d_model, output_dim, head_dropout, y_range=None):

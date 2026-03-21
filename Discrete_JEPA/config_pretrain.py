@@ -6,11 +6,13 @@ config = {
     "num_epochs": 1501,
     "ema_momentum" : 0.996,  # Slightly increased for smoother target
     "codebook_lr" : 5e-4,  # Increased - codebook needs to move faster in 128-dim space
-    "weight_decay" : 3e-3,  # Increased from 5e-5 for better regularization
+    "weight_decay" : 6e-3,
+    "weight_decay_end" : 2e-2,        # cosine ramp target (capped — not 10x)
     "perplexity_loss_weight": 0.5,  # Increased from 1.2 (will be used properly)
     #added
     "lr_pred": 6e-5,  # Matched to encoder: prevents predictor from dominating
-    "weight_decay_pred" : 1e-4,  # Increased from 1e-6
+    "weight_decay_pred" : 3e-3,
+    "weight_decay_pred_end" : 5e-3,   # gentle ramp for predictor
 
     #masking
     "mask_ratio" : 0.2,

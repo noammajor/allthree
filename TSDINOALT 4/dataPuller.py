@@ -7,6 +7,31 @@ import numpy as np
 from sklearn.preprocessing import StandardScaler
 
 
+# ── Shared Monash .tsf reader ─────────────────────────────────────────────────
+
+def _read_tsf_series(path):
+    """Read a Monash .tsf file. Returns a list of 1-D numpy float32 arrays."""
+    found_data = False
+    series_list = []
+    with open(path, 'r', encoding='cp1252') as f:
+        for line in f:
+            line = line.strip()
+            if not line or line.startswith('#'):
+                continue
+            if line.startswith('@data'):
+                found_data = True
+            elif not line.startswith('@') and found_data:
+                # Each data line: attr1:attr2:...:v1,v2,v3,...
+                vals_str = line.split(':')[-1].split(',')
+                vals = []
+                for v in vals_str:
+                    v = v.strip()
+                    vals.append(np.nan if v == '?' else float(v))
+                if vals:
+                    series_list.append(np.array(vals, dtype=np.float32))
+    return series_list
+
+
 # ── DINO pretraining ──────────────────────────────────────────────────────────
 
 class DataPuller(Dataset):
@@ -365,6 +390,91 @@ class DataPullerUCIDINO(Dataset):
         end   = start + self.window_size
         chunk = self.data[start:end]   # [window_size, n_vars] — already normalised
 
+        if self.transform:
+            chunk = self.transform(chunk)
+        return chunk
+
+
+# ── Monash pretraining ────────────────────────────────────────────────────────
+
+class MonashDataPuller(Dataset):
+    """
+    Loads all Monash .tsf files from a directory for DINO pretraining.
+
+    Each univariate series is returned as [window_size, 1] — no variable-count
+    restrictions. Used with a separate DataLoader from the main dataset so that
+    different n_vars never need to be batched together.
+    """
+
+    def __init__(self, data_dir, split='train', transform=None,
+                 batch_size=32, patch_size=12, step_size=12,
+                 min_len=512, val_prec=0.1, test_prec=0.1):
+        self.window_size = (batch_size - 1) * step_size + patch_size
+        self.step_size   = step_size
+        self.transform   = transform
+        self.which       = split
+
+        self._series = {'train': [], 'val': [], 'test': []}
+        self._index  = {'train': [], 'val': [], 'test': []}
+
+        self._load_all(data_dir, min_len, val_prec, test_prec)
+        print(f"MonashDataPuller: {len(self._index['train'])} train  "
+              f"| {len(self._index['val'])} val  "
+              f"| {len(self._index['test'])} test  windows  "
+              f"(window={self.window_size}, step={self.step_size})")
+
+    def _load_all(self, data_dir, min_len, val_prec, test_prec):
+        tsf_files = sorted(f for f in os.listdir(data_dir) if f.endswith('.tsf'))
+
+        for fname in tsf_files:
+            path = os.path.join(data_dir, fname)
+            try:
+                series_list = _read_tsf_series(path)
+            except Exception as e:
+                print(f"  MonashDataPuller: skipping {fname} — {e}")
+                continue
+
+            loaded = 0
+            for series in series_list:
+                if np.isnan(series).any() or len(series) < min_len:
+                    continue
+                series = series.reshape(-1, 1)  # [T, 1]
+
+                T         = len(series)
+                val_len   = int(T * val_prec)
+                test_len  = int(T * test_prec)
+                train_len = T - val_len - test_len
+
+                scaler = StandardScaler()
+                scaler.fit(series[:train_len])
+                scaled = scaler.transform(series).astype(np.float32)
+
+                splits = {
+                    'train': scaled[:train_len],
+                    'val':   scaled[train_len : train_len + val_len],
+                    'test':  scaled[train_len + val_len :],
+                }
+                for sname, arr in splits.items():
+                    if len(arr) < self.window_size:
+                        continue
+                    t     = torch.from_numpy(arr)   # [T, 1]
+                    s_idx = len(self._series[sname])
+                    self._series[sname].append(t)
+                    n_windows = (len(t) - self.window_size) // self.step_size + 1
+                    for j in range(n_windows):
+                        self._index[sname].append((s_idx, j))
+                loaded += 1
+            if loaded:
+                print(f"  {fname}: {loaded} series")
+
+    def __len__(self):
+        return len(self._index[self.which])
+
+    def __getitem__(self, idx):
+        s_idx, j = self._index[self.which][idx]
+        tensor = self._series[self.which][s_idx]
+        start  = j * self.step_size
+        chunk  = tensor[start : start + self.window_size]  # [window_size, 1]
         if self.transform:
             chunk = self.transform(chunk)
         return chunk

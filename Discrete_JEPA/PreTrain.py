@@ -10,6 +10,7 @@ from torchviz import make_dot
 from data_loaders.data_puller import DataPullerDJepa
 from data_loaders.data_puller import ForcastingDataPuller
 from data_loaders.data_puller import ForcastingDataPullerDescrete
+from data_loaders.data_puller import MonashDataPullerJEPA
 from mask_util import apply_mask
 from config_files.config_pretrain import config
 from config_files.config_full_jepa_classic import  configJEPA
@@ -34,28 +35,34 @@ if __name__ == "__main__":
     # Load Data
     if model == "DescreteJEPA":
         #if skip == 'false':
-        train_dataset = DataPullerDJepa(
-            data_paths=config["path_data"],
-            patch_size=config["patch_size"],
-            batch_size=config["batch_size"],
-            ratio_patches=config["ratio_patches"],
-            mask_ratio=config["mask_ratio"],
-            masking_type=config["masking_type"],
-            num_semantic_tokens=config["num_semantic_tokens"],
-            input_variables=config["input_variables"],
-            timestamp_cols=config["timestampcols"],
-            type_data='train',
-            val_prec=config["val_prec"],
-            test_prec=config["test_prec"],
-            stride=config.get("stride", None),
-            num_blocks=config.get("num_blocks", 1),
-        )
+        if config.get('pretrain_on_monash', False):
+            print("Using Monash dataset for DiscreteJEPA pretraining")
+            train_dataset = MonashDataPullerJEPA(config, which='train')
+            val_dataset   = MonashDataPullerJEPA(config, which='val')
+            test_dataset  = MonashDataPullerJEPA(config, which='test')
+        else:
+            train_dataset = DataPullerDJepa(
+                data_paths=config["path_data"],
+                patch_size=config["patch_size"],
+                batch_size=config["batch_size"],
+                ratio_patches=config["ratio_patches"],
+                mask_ratio=config["mask_ratio"],
+                masking_type=config["masking_type"],
+                num_semantic_tokens=config["num_semantic_tokens"],
+                input_variables=config["input_variables"],
+                timestamp_cols=config["timestampcols"],
+                type_data='train',
+                val_prec=config["val_prec"],
+                test_prec=config["test_prec"],
+                stride=config.get("stride", None),
+                num_blocks=config.get("num_blocks", 1),
+            )
 
-        val_dataset = copy.copy(train_dataset)
-        val_dataset.which = 'val'
+            val_dataset = copy.copy(train_dataset)
+            val_dataset.which = 'val'
 
-        test_dataset = copy.copy(train_dataset)
-        test_dataset.which = 'test'
+            test_dataset = copy.copy(train_dataset)
+            test_dataset.which = 'test'
 
         train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=config["batch_size"], shuffle=True)
         val_loader = torch.utils.data.DataLoader(val_dataset, batch_size=config["batch_size"], shuffle=True)

@@ -6,7 +6,7 @@ config = {
     "path_save": "./output_model/DiscreteJEPA/",
     "lr": 8e-5,
     "end_lr": 5e-6,
-    "num_epochs": 1501,
+    "num_epochs": 1800,
     "ema_momentum": 0.996,
     "codebook_lr": 5e-4,
     "weight_decay": 3e-3,
@@ -22,8 +22,8 @@ config = {
     # encoder
     "num_semantic_tokens": 8,
     "encoder_embed_dim": 128,
-    "nhead": 8,
-    "num_encoder_layers": 4,
+    "nhead": 16,
+    "num_encoder_layers": 5,
     "mlp_ratio": 4.0,
     "qkv_bias": True,
     "qk_scale": None,
@@ -36,8 +36,8 @@ config = {
     "codebook_size": 256,
     "commitment_cost": 0.25,
     "vq_ema_decay": 0.99,
-    "patch_size": 24,
-    "patch_size_forcasting": 24,
+    "patch_size": 16,
+    "patch_size_forcasting": 16,
 
     # predictor
     "predictor_embed_dim": 64,
@@ -53,7 +53,7 @@ config = {
     # data
     "checkpoint_save": 5000,
     "checkpoint_print": 30,
-    "ratio_patches": 24,
+    "ratio_patches": 32,
     "batch_size": 64,
 
     # loader
@@ -80,14 +80,12 @@ config = {
     "test_prec": 0.1,
 
     # ── ETTm1: 7 variables split into 2 groups of 4 (last group repeats HUFL) ──
-    "timestampcols": ["date"] * 2,
+    "timestampcols": ["date"],
     "input_variables": [
-        ["HUFL", "HULL", "MUFL", "MULL"],
-        ["LUFL", "LULL", "OT",   "HUFL"],   # HUFL repeated to fill 4th slot
+        "HUFL", "HULL", "MUFL", "MULL","LUFL", "LULL", "OT",   # HUFL repeated to fill 4th slot
     ],
     "path_data": [
-        "./data/ETTm1.csv",
-        "./data/ETTm1.csv",
+        "./data/ETTm1.csv"
     ],
     "chunk_size": 128,
 
@@ -99,7 +97,8 @@ config = {
         ["HUFL", "HULL", "MUFL", "MULL", "LUFL", "LULL", "OT"],
     ],
     "val_prec_forcasting": 0.1,
-    "test_prec_forcasting": 0.2,
+    "test_prec_forcasting": 0.1,
+    "window_step_forecasting": 1,  # raw-timestep stride between windows — matches PatchTST/DINO (non-overlapping patches, max training samples)
     "timestampcols_forcasting": ["date"],
     "path_data_forcasting": ["./data/ETTm1.csv"],
     "patches_to_forcast": 8,
@@ -113,4 +112,11 @@ config = {
     #   "finetuning" — encoder + head fine-tuned jointly (finetuning_forecasting)
     #   "predictor"  — frozen encoder + predictor, only decoder trained (predictor_forecasting)
     "forecasting_modes": ["zeroshot"],
+
+    # ── Monash pretraining ────────────────────────────────────────────────────
+    # pretrain_on_monash: include all Monash .tsf files in JEPA pretraining.
+    # monash_min_len: skip series shorter than this many raw timesteps.
+    "pretrain_on_monash":  True,
+    "monash_data_dir":     "../Monash",   # relative to Discrete_JEPA/
+    "monash_min_len":      512,
 }

@@ -465,6 +465,11 @@ $RECYCLE.BIN/
 # End of https://www.toptal.com/developers/gitignore/api/emacs,jetbrains+all,jupyternotebooks,linux,macos,microsoftoffice,notepadpp,python,tortoisegit,vim,visualstudiocode,windows
 
 ### Project: data & model artifacts ###
+# Monash dataset (large .tsf files)
+Monash/
+Monash_data_utils/
+
+
 # Datasets
 data/
 **/data/*.csv

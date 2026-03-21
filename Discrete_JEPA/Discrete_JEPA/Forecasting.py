@@ -7,6 +7,16 @@ from data_loaders.data_puller import ForcastingDataPullerDescrete
 from Discrete_JEPA.Decoder import LinearDecoder, PredictionHead
 
 
+def _instance_norm(x, eps=1e-6):
+    """Per-instance, per-variable RevIN normalization over the time axis.
+
+    x: [B, n_patches, patch_size, n_vars]
+    returns: (x_norm, mean, std)  — mean/std shape [B, 1, 1, n_vars]
+    """
+    mean = x.mean(dim=(1, 2), keepdim=True)
+    std  = x.std(dim=(1, 2), keepdim=True) + eps
+    return (x - mean) / std, mean, std
+
 
 def predictor_forecasting(self, path, num_epochs=200):
     """
@@ -174,13 +184,11 @@ def finetuning_forecasting(self, path, num_epochs=300):
         head_patch = nn.Linear(num_patches * embed_dim, h_t * P_L).to(self.device)
         head_sem   = nn.Linear(num_sem * embed_dim,     h_t * P_L).to(self.device)
 
-        # All parameters at the same LR — pure init comparison
-        optimizer = torch.optim.AdamW(
-            list(self.encoder_for.parameters()) +
-            list(head_patch.parameters()) +
-            list(head_sem.parameters()),
-            lr=lr, weight_decay=1e-4,
-        )
+        # Differential LRs: encoder at 10% of head LR to prevent overfitting
+        optimizer = torch.optim.AdamW([
+            {"params": self.encoder_for.parameters(), "lr": lr * 0.1, "weight_decay": 1e-2},
+            {"params": list(head_patch.parameters()) + list(head_sem.parameters()), "lr": lr, "weight_decay": 1e-3},
+        ])
 
         for epoch in range(num_epochs):
             self.encoder_for.train()
@@ -196,12 +204,14 @@ def finetuning_forecasting(self, path, num_epochs=300):
                 B, h, P_L_b, n_v = target_patch.shape
 
                 optimizer.zero_grad()
-                enc_out = self.encoder_for(context_patches)
+                ctx_norm, ctx_mean, ctx_std = _instance_norm(context_patches)  # RevIN
+                enc_out = self.encoder_for(ctx_norm)
                 patch_flat = enc_out["data_patches"].flatten(1)       # [B*n_v, P*D]
                 sem_flat   = enc_out["quantized_semantic"].flatten(1) # [B*n_v, S*D]
 
-                pred_patch = head_patch(patch_flat).view(B, n_v, h, P_L_b).permute(0, 2, 3, 1)
-                pred_sem   = head_sem(sem_flat).view(B, n_v, h, P_L_b).permute(0, 2, 3, 1)
+                # predict in normalised space, then denorm before loss
+                pred_patch = head_patch(patch_flat).view(B, n_v, h, P_L_b).permute(0, 2, 3, 1) * ctx_std + ctx_mean
+                pred_sem   = head_sem(sem_flat).view(B, n_v, h, P_L_b).permute(0, 2, 3, 1)     * ctx_std + ctx_mean
 
                 loss = F.mse_loss(pred_patch, target_patch) + F.mse_loss(pred_sem, target_patch)
                 loss.backward()
@@ -231,12 +241,13 @@ def finetuning_forecasting(self, path, num_epochs=300):
                 target_patch    = target_patch.to(self.device)
                 B, h, P_L_b, n_v = target_patch.shape
 
-                enc_out    = self.encoder_for(context_patches)
+                ctx_norm, ctx_mean, ctx_std = _instance_norm(context_patches)  # RevIN
+                enc_out    = self.encoder_for(ctx_norm)
                 patch_flat = enc_out["data_patches"].flatten(1)
                 sem_flat   = enc_out["quantized_semantic"].flatten(1)
 
-                pred_patch = head_patch(patch_flat).view(B, n_v, h, P_L_b).permute(0, 2, 3, 1)
-                pred_sem   = head_sem(sem_flat).view(B, n_v, h, P_L_b).permute(0, 2, 3, 1)
+                pred_patch = head_patch(patch_flat).view(B, n_v, h, P_L_b).permute(0, 2, 3, 1) * ctx_std + ctx_mean
+                pred_sem   = head_sem(sem_flat).view(B, n_v, h, P_L_b).permute(0, 2, 3, 1)     * ctx_std + ctx_mean
 
                 mse_p_list.append(F.mse_loss(pred_patch.cpu(), target_patch.cpu()).item())
                 mse_s_list.append(F.mse_loss(pred_sem.cpu(),   target_patch.cpu()).item())

@@ -5,7 +5,7 @@ config = {
     "task": "dino",
     "seed": 0,
     "output_dir": "./checkpoints",
-    "saveckp_freq": 10,
+    "saveckp_freq": 1,
     "test_only": False,
 
     # ── Datasets ──────────────────────────────────────────────────────────────
@@ -55,7 +55,7 @@ config = {
     "min_lr": 1e-6,
     "warmup_epochs": 10,
     "weight_decay": 0.04,
-    "weight_decay_end": 0.4,
+    "weight_decay_end": 0.1,
     "clip_grad": 3.0,
     "use_fp16": False,
     "freeze_last_layer": 1,
@@ -131,29 +131,40 @@ config = {
     #
     # ─────────────────────────────────────────────────────────────────────────
 
-    # 2 global views — teacher sees only these.
-    # Keep crop_ratio = 1.0 so teacher targets are stable full-length sequences.
+    # ── Teacher views (global crops) ──────────────────────────────────────────
+    # Soft-threshold detail coefficients → clean, stable structural view.
+    # Two views with different sigma to give the teacher mild variety.
+    # Try: sigma 0.1 (light) → 0.5 (aggressive)
     "global_crops": [
-        {"type": "dwt_low_pass",       "crop_ratio": 1.0},                                           # pure structural skeleton
-        {"type": "dwt_soft_threshold", "crop_ratio": 1.0, "soft_threshold_sigma": 0.3},
+        {"type": "dwt_soft_threshold", "crop_ratio": 1.0, "soft_threshold_sigma": 0.2},
+        {"type": "dwt_soft_threshold", "crop_ratio": 1.0, "soft_threshold_sigma": 0.4},
     ],
 
-    # 8 local views — student sees these + the 2 global views above.
-    # All full-length (crop_ratio = 1.0); diversity comes from augmentation type only.
+    # ── Student views (local crops) ───────────────────────────────────────────
+    # type (a): randomly zero out detail coefficients at finest levels.
+    #   Try: zero_out_ratio 0.2–0.6 ; finest_levels 1 or 2
+    # type (b): add Gaussian noise to all detail coefficients.
+    #   Try: noise_range (0.01,0.05) mild → (0.08,0.20) aggressive
     "local_crops": [
-        # ── type (a): frequency-band scale invariance (new) ──────────────────
-        {"type": "dwt_band_scale", "crop_ratio": 1.0, "band_scale_approx_range": (0.8, 1.2), "band_scale_detail_range": (0.5, 1.5)},
-        {"type": "dwt_band_scale", "crop_ratio": 1.0, "band_scale_approx_range": (0.7, 1.3), "band_scale_detail_range": (0.4, 1.6)},
-        # ── type (b): mixed — random choice per sample ───────────────────────
-        {"type": ["dwt_band_scale", "dwt_zero_out_detail"], "crop_ratio": 1.0},
-        {"type": ["dwt_band_scale", "dwt_high_perturb"],    "crop_ratio": 1.0},
-        # ── type (c): stochastic zeroing of finest-level detail coefficients ─
-        {"type": "dwt_zero_out_detail", "crop_ratio": 1.0, "zero_out_ratio": 0.3, "finest_levels": 1},
+        # ── (a) zero out finest detail coefficients ───────────────────────────
+        {"type": "dwt_zero_out_detail", "crop_ratio": 1.0, "zero_out_ratio": 0.2, "finest_levels": 1},
+        {"type": "dwt_zero_out_detail", "crop_ratio": 1.0, "zero_out_ratio": 0.4, "finest_levels": 1},
+        {"type": "dwt_zero_out_detail", "crop_ratio": 1.0, "zero_out_ratio": 0.3, "finest_levels": 2},
         {"type": "dwt_zero_out_detail", "crop_ratio": 1.0, "zero_out_ratio": 0.5, "finest_levels": 2},
-        # ── type (d): Gaussian noise on all detail coefficients ──────────────
+        # ── (b) Gaussian noise on all detail coefficients ─────────────────────
+        {"type": "dwt_high_perturb",    "crop_ratio": 1.0, "high_perturb_noise_range": (0.02, 0.06)},
+        {"type": "dwt_high_perturb",    "crop_ratio": 1.0, "high_perturb_noise_range": (0.05, 0.10)},
+        {"type": "dwt_high_perturb",    "crop_ratio": 1.0, "high_perturb_noise_range": (0.08, 0.15)},
         {"type": "dwt_high_perturb",    "crop_ratio": 1.0, "high_perturb_noise_range": (0.03, 0.08)},
-        {"type": "dwt_high_perturb",    "crop_ratio": 1.0, "high_perturb_noise_range": (0.05, 0.12)},
     ],
+
+    # ── Patch reconstruction (MAE-style auxiliary loss) ────────────────────────
+    # Student encoder sees masked patches → reconstruction head.
+    # Teacher encoder sees full input    → reconstruction head.
+    # Loss: MSE between the two reconstructions at masked positions.
+    "use_reconstruction": False,   # set True to enable
+    "recon_mask_ratio":   0.4,    # fraction of patches to mask for student
+    "recon_loss_weight":  0.5,    # weight of reconstruction loss relative to DINO loss
 
     # ── Downstream: Forecasting ───────────────────────────────────────────────
     "pred_len": 96,
@@ -174,6 +185,13 @@ config = {
 
     # checkpoint to load for downstream tasks  (0 = random init)
     "path_num": 0,
+
+    # ── Monash pretraining ────────────────────────────────────────────────────
+    # pretrain_on_monash: include all Monash .tsf files in DINO pretraining.
+    # monash_min_len: skip series shorter than this many raw timesteps.
+    "pretrain_on_monash":  True,
+    "monash_data_dir":     "../Monash",   # relative to TSDINOALT 4/
+    "monash_min_len":      512,
 
     # ── Distributed ───────────────────────────────────────────────────────────
     "dist_url": "env://",
