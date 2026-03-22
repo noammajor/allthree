@@ -8,6 +8,12 @@ import torch.nn.functional as F
 from mask_util import apply_mask
 
 
+def _instance_norm(x, eps=1e-6):
+    mean = x.mean(dim=(1, 2), keepdim=True)
+    std  = x.std(dim=(1, 2), keepdim=True) + eps
+    return (x - mean) / std, mean, std
+
+
 def _compute_global_stats(self, data_loader=None):
     """Compute global mean and std from data for robust normalization."""
     if data_loader is None:
@@ -112,6 +118,7 @@ def evaluate(self, val_loader, lambda_weights, beta_vq, current_global_step, tot
     with torch.no_grad():
         for patches, masks, non_masks in val_loader:
             patches, masks, non_masks = patches.to(self.device), masks.to(self.device), non_masks.to(self.device)
+            patches, _, _ = _instance_norm(patches)
             # masks=context_idx (visible patches), non_masks=target_idx (hidden patches to predict)
             target_out = self.encoder_ema(patches)
             target_out["data_patches"] = apply_mask(target_out["data_patches"], non_masks)         # EMA: keep hidden (target) patches
@@ -167,7 +174,6 @@ def train_and_evaluate(self):
     self.predictor = self.predictor.to(self.device)
     self.encoder_ema = self.encoder_ema.to(self.device)
     self.vector_quantizer = self.vector_quantizer.to(self.device)
-    self.grounding_head = self.grounding_head.to(self.device)
     for p in self.encoder_ema.parameters():
         p.requires_grad = False
 
@@ -200,6 +206,7 @@ def train_and_evaluate(self):
             patches = patches.to(self.device)
             masks = masks.to(self.device)
             non_masks = non_masks.to(self.device)
+            patches, _, _ = _instance_norm(patches)
             with torch.no_grad():
                 target_out = self.encoder_ema(patches)
                 target_out["data_patches"] = apply_mask(target_out["data_patches"], non_masks)   # EMA keeps target (masked) patches
