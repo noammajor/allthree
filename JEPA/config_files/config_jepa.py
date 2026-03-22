@@ -3,12 +3,11 @@
 
 config = {
     "path_save": "./output_model/JEPA/",
-    "lr": 8e-5,
-    "end_lr": 5e-6,
-    "num_epochs": 21,
+    "lr": 1e-4,
+    "num_epochs": 31,
     "ema_momentum": 0.996,
     "weight_decay": 3e-3,
-    "lr_pred": 6e-5,
+    "lr_pred": 5e-4,
     "weight_decay_pred": 1e-4,
 
     # masking
@@ -17,8 +16,8 @@ config = {
     "num_blocks": 3,
 
     # encoder  (matches PatchTST architecture)
-    "encoder_embed_dim": 128,
-    "nhead": 16,
+    "encoder_embed_dim": 256,
+    "nhead": 8,
     "num_encoder_layers": 5,
     "mlp_ratio": 4.0,
     "qkv_bias": True,
@@ -33,9 +32,9 @@ config = {
     "patch_size_forcasting": 16,
 
     # predictor
-    "predictor_embed_dim": 64,
+    "predictor_embed_dim": 128,
     "predictor_nhead": 4,
-    "predictor_num_layers": 2,
+    "predictor_num_layers":4,
 
     # ── Datasets ──────────────────────────────────────────────────────────────
     "pretrain_dataset": "ettm1",
@@ -48,14 +47,15 @@ config = {
     "batch_size": 64,
 
     # loader
-    "clip_grad": 2.0,
-    "warmup_ratio": 0.50,
+    "clip_grad": 1.0,
+    "warmup_ratio": 0.05,
     "ipe_scale": 1.25,
 
     # loss weights
-    "vigreg_var": 0.25,   # VICReg variance term coefficient
-    "vigreg_cov": 0.25,   # VICReg covariance term coefficient
-    "val_prec": 0.2,
+    "invar": 25.0,
+    "vigreg_var": 25.0,   # VICReg variance term coefficient
+    "vigreg_cov": 1.0,   # VICReg covariance term coefficient
+    "val_prec": 0.1,
     "test_prec": 0.1,
 
     # ── ETTm1: 7 variables ────────────────────────────────────────────────────
@@ -69,9 +69,9 @@ config = {
     "chunk_size": 128,
 
     # forecasting downstream
-    "epoch_t": 250,
+    "epoch_t": 80,
     "context_t": 24,
-    "horizon_t": 4,
+    "horizon_t": 6,
     "input_variables_forcasting": [
         ["HUFL", "HULL", "MUFL", "MULL", "LUFL", "LULL", "OT"],
     ],
@@ -90,6 +90,6 @@ config = {
 
     # ── Monash pretraining ────────────────────────────────────────────────────
     "pretrain_on_monash": True,
-    "monash_data_dir": "../Monash",   # relative to JEPA/
+    "monash_data_dir": "/content/drive/MyDrive/allthree/Monash",   # relative to JEPA/
     "monash_min_len": 512,
 }

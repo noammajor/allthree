@@ -12,15 +12,13 @@ def calculate_perplexity_regularizer(self, context_ppl, target_ppl):
     return loss
     
 def _calculate_vicreg_loss(self, x: torch.Tensor):
-    std = torch.sqrt(x.var(dim=0, unbiased=True) + 1e-4)
-    var_loss = torch.mean(F.relu(1.0 - std))
-    batch_size = x.shape[0]
     num_features = x.shape[-1]
-    x_flat = x.reshape(-1, num_features) 
+    x_flat = x.reshape(-1, num_features)
+    std = torch.sqrt(x_flat.var(dim=0, unbiased=True) + 1e-4)
+    var_loss = torch.mean(F.relu(1.0 - std))
     x_centered = x_flat - x_flat.mean(dim=0)
     cov = (x_centered.T @ x_centered) / (x_flat.shape[0] - 1)
     cov_loss = (cov.pow(2).sum() - torch.diagonal(cov).pow(2).sum()) / num_features
-    
     return var_loss, cov_loss
 def _calculate_token_diversity_loss(self, semantic_tokens: torch.Tensor):
     """Penalizes semantic tokens for being too similar within each sample.

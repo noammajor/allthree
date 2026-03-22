@@ -1,17 +1,16 @@
-# ETTm1 configuration for Discrete JEPA
+## ETTm1 configuration for Discrete JEPA
 # Data paths use "./" relative to Discrete_JEPA/ directory;
 # Train_and_downstream.py resolves these to absolute paths before passing to the model.
 
 config = {
     "path_save": "./output_model/DiscreteJEPA/",
-    "lr": 8e-5,
-    "end_lr": 5e-6,
-    "num_epochs": 21,
+    "lr": 1e-4,
+    "num_epochs": 23,
     "ema_momentum": 0.996,
-    "codebook_lr": 5e-4,
+    "codebook_lr": 2e-4,
     "weight_decay": 3e-3,
     "perplexity_loss_weight": 0.5,
-    "lr_pred": 6e-5,
+    "lr_pred": 5e-4,
     "weight_decay_pred": 1e-4,
 
     # masking
@@ -21,8 +20,8 @@ config = {
 
     # encoder
     "num_semantic_tokens": 16,
-    "encoder_embed_dim": 128,
-    "nhead": 16,
+    "encoder_embed_dim": 256,
+    "nhead": 8,
     "num_encoder_layers": 5,
     "mlp_ratio": 4.0,
     "qkv_bias": True,
@@ -34,15 +33,15 @@ config = {
     "embed_bias": True,
     "encoder_embed_bias": True,
     "codebook_size": 256,
-    "commitment_cost": 0.25,
+    "commitment_cost": 0.15,
     "vq_ema_decay": 0.99,
     "patch_size": 16,
     "patch_size_forcasting": 16,
 
     # predictor
-    "predictor_embed_dim": 64,
-    "predictor_nhead": 8,
-    "predictor_num_layers": 2,
+    "predictor_embed_dim": 128,
+    "predictor_nhead": 4,
+    "predictor_num_layers": 3,
 
     # ── Datasets ──────────────────────────────────────────────────────────────
     # Names must match keys in dataset_registry.py.
@@ -57,25 +56,25 @@ config = {
     "batch_size": 64,
 
     # loader
-    "clip_grad": 2.0,
-    "warmup_ratio": 0.50,
+    "clip_grad": 1.0,
+    "warmup_ratio": 0.05,
     "ipe_scale": 1.25,
 
     # loss weights
     "lambda_weights": {
-        "P2P": 1.0,
-        "S2P": 1.0,
+        "P2P": 25.0,
+        "S2P": 25.0,
         "P2S": 1.0,
     },
     "preplexity_coeff": 1.0,
     "token_diversity": 0.15,
     "vigreg_patches": 0.00,
     "decorr_coeff": 0.0,
-    "vigreg_coeff": 0.25,
-    "vigreg_token": 0.25,
+    "vigreg_var": 25.0,
+    "vigreg_covar": 1.0,
     "grounding_coeff": 0.10,
-    "beta_vq": 1.0,
-    "vq_warmup": 0.01,
+    "beta_vq": 12.5,
+    "vq_warmup": 0.05,
     "val_prec": 0.2,
     "test_prec": 0.1,
 
@@ -90,7 +89,7 @@ config = {
     "chunk_size": 128,
 
     # forecasting downstream
-    "epoch_t": 250,
+    "epoch_t": 70,
     "context_t": 24,
     "horizon_t": 4,
     "input_variables_forcasting": [
@@ -117,6 +116,6 @@ config = {
     # pretrain_on_monash: include all Monash .tsf files in JEPA pretraining.
     # monash_min_len: skip series shorter than this many raw timesteps.
     "pretrain_on_monash":  True,
-    "monash_data_dir":     "../Monash",   # relative to Discrete_JEPA/
+    "monash_data_dir":     "/content/drive/MyDrive/allthree/Monash",   # relative to Discrete_JEPA/
     "monash_min_len":      512,
 }

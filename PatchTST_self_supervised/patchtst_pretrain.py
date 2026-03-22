@@ -47,6 +47,9 @@ parser.add_argument('--lr', type=float, default=1e-4, help='learning rate')
 # model id to keep track of the number of models saved
 parser.add_argument('--pretrained_model_id', type=int, default=1, help='id of the saved pretrained model')
 parser.add_argument('--model_type', type=str, default='based_model', help='for multivariate model or univariate model')
+# Monash pretraining
+parser.add_argument('--monash_data_dir', type=str, default='../Monash', help='path to directory containing Monash .tsf files')
+parser.add_argument('--monash_min_len', type=int, default=512, help='minimum series length to include from Monash')
 
 
 args = parser.parse_args()

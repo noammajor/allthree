@@ -90,9 +90,7 @@ def get_multi_block_indices(B, num_patches, num_blocks, block_size, device):
     target_list = []
 
     for _ in range(B):
-        # Sample num_blocks values from [0, gap_space], sort them
         u = torch.randint(0, gap_space + 1, (num_blocks,)).sort().values.tolist()
-        # Map to non-overlapping block starts
         starts = [u[i] + i * block_size for i in range(num_blocks)]
 
         # Build sorted target indices

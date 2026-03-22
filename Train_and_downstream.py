@@ -470,58 +470,100 @@ def run_jepa_simple(skip_train: bool = False,
 
     # ── forecasting downstream ────────────────────────────────────────────────
     print("\n[JEPA] Running zeroshot forecasting …")
-    for epoch in range(200, config["num_epochs"] + 1, 100):
-        print(f"\n  → checkpoint epoch {epoch}")
-        model.forcasting_zeroshot(f"_epoch{epoch}")
+    #for epoch in range(200, config["num_epochs"] + 1, 100):
+    #    print(f"\n  → checkpoint epoch {epoch}")
+    #    model.forcasting_zeroshot(f"_epoch{epoch}")
+    model.forcasting_zeroshot(f"_epoch{10}")
+    model.forcasting_zeroshot(f"_epoch{15}")
 
 
 # ── PatchTST ──────────────────────────────────────────────────────────────────
 
 def run_patchtst(skip_train: bool = False, pretrain_dataset: str = None, forecast_dataset: str = None):
+    patchtst_dir = Path(__file__).parent / "PatchTST_self_supervised"
+
+    import importlib.util
+    _spec = importlib.util.spec_from_file_location(
+        "config_patchtst", patchtst_dir / "config_patchtst.py")
+    _mod = importlib.util.module_from_spec(_spec)
+    _spec.loader.exec_module(_mod)
+    cfg = dict(_mod.config)
+
+    pretrain_on_monash = cfg.get("pretrain_on_monash", False)
+    _pretrain_dset = pretrain_dataset or cfg.get("pretrain_dataset", "ettm1")
+    _forecast_dset = forecast_dataset or cfg.get("forecast_dataset") or _pretrain_dset
+
     print("\n" + "="*60)
     print("  MODEL: PatchTST (self-supervised)")
+    if pretrain_on_monash or _pretrain_dset == "monash":
+        monash_dir = cfg.get("monash_data_dir", "../Monash")
+        if not os.path.isabs(monash_dir):
+            monash_dir = str((patchtst_dir / monash_dir).resolve())
+        print(f"  pretrain: Monash ({monash_dir})   forecast: {_forecast_dset}")
+        _pretrain_dset = "monash"
+    else:
+        monash_dir = None
+        print(f"  pretrain: {_pretrain_dset}   forecast: {_forecast_dset}")
     print("="*60)
 
-    patchtst_dir = str((Path(__file__).parent / "PatchTST_self_supervised").resolve())
+    patchtst_dir = str(patchtst_dir.resolve())
+
+    # Build common pretrain args from config
+    pretrain_cmd = [
+        sys.executable, "patchtst_pretrain.py",
+        "--dset_pretrain",       _pretrain_dset,
+        "--context_points",      str(cfg.get("context_points",      512)),
+        "--patch_len",           str(cfg.get("patch_len",           12)),
+        "--stride",              str(cfg.get("stride",              12)),
+        "--n_layers",            str(cfg.get("n_layers",            3)),
+        "--n_heads",             str(cfg.get("n_heads",             16)),
+        "--d_model",             str(cfg.get("d_model",             128)),
+        "--d_ff",                str(cfg.get("d_ff",                512)),
+        "--dropout",             str(cfg.get("dropout",             0.2)),
+        "--head_dropout",        str(cfg.get("head_dropout",        0.2)),
+        "--mask_ratio",          str(cfg.get("mask_ratio",          0.4)),
+        "--n_epochs_pretrain",   str(cfg.get("n_epochs_pretrain",   10)),
+        "--batch_size",          str(cfg.get("batch_size",          64)),
+        "--revin",               str(int(cfg.get("revin",           True))),
+        "--pretrained_model_id", str(cfg.get("pretrained_model_id", 1)),
+    ]
+    if monash_dir is not None:
+        pretrain_cmd += ["--monash_data_dir", monash_dir,
+                         "--monash_min_len", str(cfg.get("monash_min_len", 512))]
 
     # ── pretraining ───────────────────────────────────────────────────────────
     if not skip_train:
-        _pretrain_dset = pretrain_dataset or "ettm1"
         print(f"\n[PatchTST] Starting pretraining on {_pretrain_dset} …")
-        result = subprocess.run(
-            [sys.executable, "patchtst_pretrain.py",
-             "--dset_pretrain", _pretrain_dset,
-             "--n_epochs_pretrain", "10",
-             "--d_ff", "512"],
-            cwd=patchtst_dir,
-            capture_output=True, text=True,
-        )
+        result = subprocess.run(pretrain_cmd, cwd=patchtst_dir, capture_output=True, text=True)
         print(result.stdout)
         if result.returncode != 0:
             print("[PatchTST] Pretraining exited with errors.")
             print(result.stderr)
             return
     else:
-        _pretrain_dset = pretrain_dataset or "ettm1"
         print("[PatchTST] Skipping pretraining.")
 
     # ── forecasting downstream ────────────────────────────────────────────────
-    _forecast_dset = forecast_dataset or _pretrain_dset
-    # Reconstruct the pretrained model path using the same naming convention as patchtst_pretrain.py
+    n_ep    = cfg.get("n_epochs_pretrain", 10)
+    ctx     = cfg.get("context_points", 512)
+    p_len   = cfg.get("patch_len", 12)
+    stride  = cfg.get("stride", 12)
+    m_ratio = cfg.get("mask_ratio", 0.4)
+    m_id    = cfg.get("pretrained_model_id", 1)
+    model_fname = (f"patchtst_pretrained_cw{ctx}_patch{p_len}_stride{stride}"
+                   f"_epochs-pretrain{n_ep}_mask{m_ratio}_model{m_id}.pth")
     pretrained_model_path = os.path.join(
-        patchtst_dir,
-        "saved_models", _pretrain_dset, "masked_patchtst", "based_model",
-        "patchtst_pretrained_cw512_patch12_stride12_epochs-pretrain10_mask0.4_model1.pth"
+        patchtst_dir, "saved_models", _pretrain_dset,
+        "masked_patchtst", cfg.get("model_type", "based_model"), model_fname
     )
     print(f"\n[PatchTST] Running forecasting fine-tuning on {_forecast_dset} …")
     result = subprocess.run(
         [sys.executable, "patchtst_finetune.py",
          "--dset_finetune", _forecast_dset,
-         "--is_finetune", "1",
-         "--d_ff", "512",
+         "--is_finetune",   "1",
+         "--d_ff",          str(cfg.get("d_ff", 512)),
          "--pretrained_model", pretrained_model_path],
-        cwd=patchtst_dir,
-        capture_output=True, text=True,
+        cwd=patchtst_dir, capture_output=True, text=True,
     )
     print(result.stdout)
     if result.returncode != 0:

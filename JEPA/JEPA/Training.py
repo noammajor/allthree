@@ -8,6 +8,12 @@ import torch.nn.functional as F
 from mask_util import apply_mask
 
 
+def _instance_norm(x, eps=1e-6):
+    mean = x.mean(dim=(1, 2), keepdim=True)
+    std  = x.std(dim=(1, 2), keepdim=True) + eps
+    return (x - mean) / std, mean, std
+
+
 def _compute_global_stats(self, data_loader=None):
     """Compute global mean and std from data for robust normalization."""
     if data_loader is None:
@@ -51,7 +57,7 @@ def compute_jepa_loss(
     var_loss_context_patch, cov_loss_context_patch = self._calculate_vicreg_loss(z_p_context)
 
     total_loss = (
-        l_MSE + self.config["vigreg_var"] * var_loss_context_patch+ self.config["vigreg_cov"] * cov_loss_context_patch 
+        self.config["invariance_loss_weight"] * l_MSE + self.config["vigreg_var"] * var_loss_context_patch+ self.config["vigreg_cov"] * cov_loss_context_patch 
     )
     if batch_idx % 5 == 0:
         print(f"Epoch {epoch}, Batch {batch_idx} - JEPA Loss: {total_loss.item():.4f}, MSE: {l_MSE.item():.4f}, Var: {var_loss_context_patch.item():.4f}, Cov: {cov_loss_context_patch.item():.4f}")
@@ -72,6 +78,7 @@ def evaluate(self, val_loader, current_global_step, total_training_steps, epoch)
     with torch.no_grad():
         for patches, masks, non_masks in val_loader:
             patches, masks, non_masks = patches.to(self.device), masks.to(self.device), non_masks.to(self.device)
+            patches, _, _ = _instance_norm(patches)
             # masks=context_idx (visible patches), non_masks=target_idx (hidden patches to predict)
             target_out = self.encoder_ema(patches)
             target_out["data_patches"] = apply_mask(target_out["data_patches"], non_masks)         # EMA: keep hidden (target) patches
@@ -159,6 +166,7 @@ def train_and_evaluate(self):
             patches = patches.to(self.device)
             masks = masks.to(self.device)
             non_masks = non_masks.to(self.device)
+            patches, _, _ = _instance_norm(patches)
             with torch.no_grad():
                 target_out = self.encoder_ema(patches)
                 target_out["data_patches"] = apply_mask(target_out["data_patches"], non_masks)   
