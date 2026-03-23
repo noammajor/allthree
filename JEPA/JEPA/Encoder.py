@@ -197,6 +197,7 @@ class Encoder(nn.Module):
 
         self.W_P = nn.Linear(dim_in, embed_dim)
         self.W_pos = positional_encoding(pe, learn_pe, num_patches, embed_dim)
+        self.pe_scale = nn.Parameter(torch.tensor(0.1))  # learnable PE strength, starts weak
         self.dropout = nn.Dropout(drop_rate)
 
         d_ff = int(embed_dim * mlp_ratio)
@@ -220,7 +221,7 @@ class Encoder(nn.Module):
 
         # Patch projection + positional encoding
         x = self.W_P(x)
-        x = self.dropout(x + self.W_pos[:P, :])
+        x = self.dropout(x + self.pe_scale * self.W_pos[:P, :])
 
         # Context masking (student encoder only)
         if mask is not None:

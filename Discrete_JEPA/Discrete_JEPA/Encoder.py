@@ -219,7 +219,7 @@ class Encoder(nn.Module):
 
         # Positional encoding: learnable nn.Parameter [num_patches, embed_dim]
         self.W_pos = positional_encoding(pe, learn_pe, num_patches, embed_dim)
-
+        self.pe_scale = nn.Parameter(torch.tensor(0.1))
         self.dropout = nn.Dropout(drop_rate)
 
         # Transformer
@@ -250,7 +250,7 @@ class Encoder(nn.Module):
         x = self.W_P(x)
 
         # Add positional encoding; W_pos is [num_patches, D], slice to actual P
-        x = self.dropout(x + self.W_pos[:P, :])
+        x = self.dropout(x + self.W_pos[:P, :] * self.pe_scale)
 
         # Context masking (student encoder only)
         if mask is not None:

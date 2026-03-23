@@ -571,13 +571,105 @@ def run_patchtst(skip_train: bool = False, pretrain_dataset: str = None, forecas
         print(result.stderr)
 
 
+# ── NPT (NTP pretraining on PatchTST) ─────────────────────────────────────────
+
+def run_ntp(skip_train: bool = False, pretrain_dataset: str = None, forecast_dataset: str = None):
+    npt_dir = Path(__file__).parent / "NPT"
+    _add_path(npt_dir)
+
+    import importlib.util
+    _spec = importlib.util.spec_from_file_location("config_ntp", npt_dir / "config_ntp.py")
+    _mod  = importlib.util.module_from_spec(_spec)
+    _spec.loader.exec_module(_mod)
+    cfg = dict(_mod.config)
+
+    _pretrain_dset = pretrain_dataset or cfg.get("pretrain_dataset", "monash")
+    _forecast_dset = forecast_dataset or cfg.get("forecast_dataset") or _pretrain_dset
+    cfg["pretrain_dataset"] = _pretrain_dset
+    cfg["forecast_dataset"] = _forecast_dset
+
+    if _pretrain_dset == "monash":
+        monash_dir = cfg.get("monash_data_dir", "../Monash")
+        if not os.path.isabs(monash_dir):
+            cfg["monash_data_dir"] = str((npt_dir / monash_dir).resolve())
+        print("\n" + "="*60)
+        print("  MODEL: NPT (Next-Token-Patch Prediction)")
+        print(f"  pretrain: Monash ({cfg['monash_data_dir']})   forecast: {_forecast_dset}")
+    else:
+        print("\n" + "="*60)
+        print("  MODEL: NPT (Next-Token-Patch Prediction)")
+        print(f"  pretrain: {_pretrain_dset}   forecast: {_forecast_dset}")
+    print("="*60)
+
+    from ntp_pretrain import pretrain_ntp, _model_fname
+    from ntp_forecasting import zeroshot_forecasting
+
+    # Resolve checkpoint path (used whether we train or skip)
+    _save_dir = npt_dir / "saved_models" / _pretrain_dset / "ntp"
+    _ckpt_path = str(_save_dir / (_model_fname(cfg, _pretrain_dset) + ".pt"))
+
+    if not skip_train:
+        print(f"\n[NPT] Starting NTP pretraining on {_pretrain_dset} …")
+        _ckpt_path = pretrain_ntp(cfg)   # returns best-model path
+    else:
+        print("[NPT] Skipping pretraining.")
+
+    if _forecast_dset:
+        _add_path(Path(__file__).parent / "random")
+        from random_forecasting import random_forecasting
+
+        print(f"\n[NPT] Running zero-shot forecasting on {_forecast_dset} …")
+        mse_trained, mae_trained = zeroshot_forecasting(cfg, _ckpt_path)
+
+        print(f"\n[NPT] Running random baseline on {_forecast_dset} …")
+        mse_random, mae_random = random_forecasting(cfg, _forecast_dset)
+
+        if mse_trained is not None and mse_random is not None:
+            print(f"\n{'='*60}")
+            print(f"  Results on {_forecast_dset}")
+            print(f"  {'':20s}  {'MSE':>8}  {'MAE':>8}")
+            print(f"  {'NPT (pretrained)':20s}  {mse_trained:8.4f}  {mae_trained:8.4f}")
+            print(f"  {'Random baseline':20s}  {mse_random:8.4f}  {mae_random:8.4f}")
+            print(f"{'='*60}")
+    else:
+        print("[NPT] No forecast_dataset set — skipping forecasting.")
+
+
+# ── Random baseline ───────────────────────────────────────────────────────────
+
+def run_random(skip_train: bool = False, pretrain_dataset: str = None, forecast_dataset: str = None):
+    random_dir = Path(__file__).parent / "random"
+    npt_dir    = Path(__file__).parent / "NPT"
+    _add_path(random_dir)
+    _add_path(npt_dir)
+
+    import importlib.util
+    _spec = importlib.util.spec_from_file_location("config_ntp", npt_dir / "config_ntp.py")
+    _mod  = importlib.util.module_from_spec(_spec)
+    _spec.loader.exec_module(_mod)
+    cfg = dict(_mod.config)
+
+    _forecast_dset = forecast_dataset or cfg.get("forecast_dataset", "ettm1")
+    cfg["forecast_dataset"] = _forecast_dset
+
+    print("\n" + "="*60)
+    print("  MODEL: Random Baseline (frozen random encoder)")
+    print(f"  forecast: {_forecast_dset}")
+    print("="*60)
+
+    from random_forecasting import random_forecasting
+    random_forecasting(cfg, _forecast_dset)
+
+
 # ── entry point ───────────────────────────────────────────────────────────────
 
 RUNNERS = {
-    "dino":       run_dino,
-    "jepa":       run_jepa,
+    "dino":        run_dino,
+    "jepa":        run_jepa,
     "jepa_simple": run_jepa_simple,
-    "patchtst":   run_patchtst,
+    "patchtst":    run_patchtst,
+    "npt":         run_ntp,
+    "random":      run_random,
 }
 
 def run(model: str, skip_train: bool = False,
@@ -606,7 +698,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--model", type=str, required=True,
         choices=list(RUNNERS),
-        help="Which model to run: dino | jepa | patchtst",
+        help="Which model to run: dino | jepa | jepa_simple | patchtst | npt | random",
     )
     parser.add_argument(
         "--pretrain_dataset", type=str, required=True,

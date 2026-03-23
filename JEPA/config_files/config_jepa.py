@@ -1,5 +1,3 @@
-# ETTm1 configuration for JEPA (P2P only — no VQ / semantic tokens)
-# Data paths use "./" relative to the JEPA/ directory.
 
 config = {
     "path_save": "./output_model/JEPA/",
@@ -34,7 +32,7 @@ config = {
     # predictor
     "predictor_embed_dim": 128,
     "predictor_nhead": 4,
-    "predictor_num_layers":4,
+    "predictor_num_layers":3,
 
     # ── Datasets ──────────────────────────────────────────────────────────────
     "pretrain_dataset": "ettm1",
